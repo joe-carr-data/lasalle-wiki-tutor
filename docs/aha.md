@@ -26,9 +26,23 @@ What this means in practice:
 - Page templates differ across content types. The bachelor template has
   seven subpages; specialization courses often have only the base page.
 
+## EN and ES use completely different URL structures
+
+English uses `/en/education/` for everything. Spanish uses
+`/es/estudios/` with different category slugs:
+
+| EN | ES |
+|---|---|
+| `/en/education/degrees` | `/es/estudios/grados` |
+| `/en/education/masters-postgraduates` | `/es/estudios/masters-y-postgrados` |
+| `/en/education/course-browser` | `/es/estudios/buscador-de-estudios` |
+
+The script uses a `LANG_CONFIG` dict keyed by language code to handle
+this. **Do not assume URL patterns are the same across languages.**
+
 ## URL conventions worth remembering
 
-- Programmes index: `/en/education/course-browser` (paginated 0–40).
+- Programmes index: `/en/education/course-browser` (paginated).
 - Per-category index: `/en/education/{degrees, masters-postgraduates,
   doctorate, dual-degrees, specialization-course, online-training,
   summer-school}`.
