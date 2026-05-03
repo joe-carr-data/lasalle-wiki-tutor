@@ -1,11 +1,12 @@
 [project]
 name = "lasalle-catalog"
 version = "0.1.0"
-description = "Local mirror and wiki source for the La Salle University academic catalog"
+description = "Local mirror and wiki source for the La Salle Campus Barcelona academic catalog"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31",
     "lxml>=5.0",
+    "tenacity>=8.2",
     "typer>=0.12",
 ]
 
