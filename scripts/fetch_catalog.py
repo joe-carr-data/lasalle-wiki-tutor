@@ -428,10 +428,13 @@ def enumerate(
                 progress.advance(task)
 
     # --- Programme Browser (paginated) ---
+    MAX_BROWSER_PAGES = 60  # safety cap; expected ~40 pages
+    STALE_PAGE_LIMIT = 3    # stop after N consecutive pages with no new unique programs
     for lang in LANGUAGES:
         page_num = 0
+        stale_streak = 0
         with console.status(f"[bold]Browser /{lang}/ page {page_num}...") as status:
-            while True:
+            while page_num < MAX_BROWSER_PAGES:
                 url = f"{BASE_URL}/{lang}/education/course-browser?page={page_num}"
                 status.update(f"[bold]Browser /{lang}/ page {page_num} ({len(seen)} programs so far)")
                 resp = fetch(session, url, delay=delay_seconds)
@@ -441,13 +444,24 @@ def enumerate(
                         log.info("Browser %s page %d: 0 links, stopping", lang, page_num)
                         console.print(f"  /{lang}/ browser: {page_num} pages, no more links")
                         break
+                    before = len(seen)
                     _add(links, f"course-browser?page={page_num}")
-                    log.info("Browser %s page %d: %d links", lang, page_num, len(links))
+                    new_count = len(seen) - before
+                    log.info("Browser %s page %d: %d links (%d new)", lang, page_num, len(links), new_count)
+                    if new_count == 0:
+                        stale_streak += 1
+                        if stale_streak >= STALE_PAGE_LIMIT:
+                            console.print(f"  /{lang}/ browser: {page_num + 1} pages, {STALE_PAGE_LIMIT} consecutive pages with no new programs, stopping")
+                            break
+                    else:
+                        stale_streak = 0
                     page_num += 1
                 else:
                     log.warning("Browser page failed: %s", url)
                     console.print(f"  /{lang}/ browser: stopped at page {page_num} (failed)")
                     break
+            else:
+                console.print(f"  /{lang}/ browser: hit max {MAX_BROWSER_PAGES} pages")
 
     # --- Write seed file ---
     seeds = sorted(seen.values(), key=lambda s: s["url"])
