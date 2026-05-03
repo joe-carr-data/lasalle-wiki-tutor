@@ -40,6 +40,17 @@ English uses `/en/education/` for everything. Spanish uses
 The script uses a `LANG_CONFIG` dict keyed by language code to handle
 this. **Do not assume URL patterns are the same across languages.**
 
+Subpage suffixes also differ:
+
+| EN | ES |
+|---|---|
+| `goals` | `objetivos` |
+| `requirements` | `requisitos` |
+| `syllabus` | `plan-estudios` |
+| `methodology` | `metodologia` |
+| `academics` | `profesorado` |
+| `career-opportunities` | `salidas-profesionales` |
+
 ## URL conventions worth remembering
 
 - Programmes index: `/en/education/course-browser` (paginated).

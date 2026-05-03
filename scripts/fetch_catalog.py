@@ -113,14 +113,29 @@ NON_PROGRAM_SLUGS = {
     "tecnologia-y-salud",
 }
 
-PROGRAM_SUBPAGES = (
-    "goals",
-    "requirements",
-    "syllabus",
-    "methodology",
-    "academics",
-    "career-opportunities",
-)
+PROGRAM_SUBPAGES = {
+    "en": (
+        ("goals", None),
+        ("requirements", None),
+        ("syllabus", "syllabus"),
+        ("methodology", None),
+        ("academics", None),
+        ("career-opportunities", None),
+    ),
+    "es": (
+        ("objetivos", None),
+        ("requisitos", None),
+        ("plan-estudios", "syllabus"),
+        ("metodologia", None),
+        ("profesorado", None),
+        ("salidas-profesionales", None),
+    ),
+}
+# Each entry is (suffix, role). role="syllabus" means extract subject links from it.
+
+def get_subpage_suffixes(lang: str) -> list[tuple[str, str | None]]:
+    """Return subpage suffixes for a language."""
+    return list(PROGRAM_SUBPAGES.get(lang, PROGRAM_SUBPAGES["en"]))
 
 # robots.txt disallow prefixes (relevant ones)
 DISALLOWED_PREFIXES = (
@@ -482,12 +497,22 @@ def _rebuild_subject_queue_from_disk() -> dict[str, list[str]]:
     if not HTML_DIR.exists():
         return subject_queue
 
-    for syllabus_path in HTML_DIR.rglob("**/syllabus.html"):
+    # Collect all syllabus-role filenames across languages
+    syllabus_filenames = set()
+    for lang_subpages in PROGRAM_SUBPAGES.values():
+        for suffix, role in lang_subpages:
+            if role == "syllabus":
+                syllabus_filenames.add(f"{suffix}.html")
+
+    for html_path in HTML_DIR.rglob("*.html"):
+        if html_path.name not in syllabus_filenames:
+            continue
+
         # Derive the parent program URL from the file path
         # e.g. data/raw_html/en/education/bachelor-foo/syllabus.html
         #   -> parent is /en/education/bachelor-foo
-        rel = syllabus_path.relative_to(HTML_DIR)
-        parts = rel.parts  # ('en', 'education', 'bachelor-foo', 'syllabus.html')
+        rel = html_path.relative_to(HTML_DIR)
+        parts = rel.parts
         if len(parts) < 3:
             continue
         parent_path = "/" + "/".join(parts[:-1])
@@ -497,7 +522,7 @@ def _rebuild_subject_queue_from_disk() -> dict[str, list[str]]:
         lang = parts[0] if parts[0] in LANGUAGES else "en"
 
         try:
-            html_bytes = syllabus_path.read_bytes()
+            html_bytes = html_path.read_bytes()
             subjects = extract_subject_links(html_bytes, lang)
             for subj_url in subjects:
                 if subj_url not in subject_queue:
@@ -505,7 +530,7 @@ def _rebuild_subject_queue_from_disk() -> dict[str, list[str]]:
                 if parent_url not in subject_queue[subj_url]:
                     subject_queue[subj_url].append(parent_url)
         except Exception as exc:
-            log.warning("Failed to parse saved syllabus %s: %s", syllabus_path, exc)
+            log.warning("Failed to parse saved syllabus %s: %s", html_path, exc)
 
     return subject_queue
 
@@ -734,7 +759,7 @@ def download(
 
             # Only fetch subpages for confirmed program pages
             if base_is_program and base_status == 200:
-                for suffix in PROGRAM_SUBPAGES:
+                for suffix, role in get_subpage_suffixes(lang):
                     sub_url = f"{base_url}/{suffix}"
                     if sub_url in already_done:
                         subpages_present.append(suffix)
@@ -746,8 +771,8 @@ def download(
                         title, h1 = extract_title_and_h1(resp.content)
                         subpages_present.append(suffix)
 
-                        # Extract subjects from syllabus (Fix #4: scoped to content container)
-                        if suffix == "syllabus":
+                        # Extract subjects from syllabus-role pages
+                        if role == "syllabus":
                             subjects = extract_subject_links(resp.content, lang)
                             linked_subjects.extend(subjects)
                             for subj_url in subjects:
