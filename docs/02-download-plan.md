@@ -1,26 +1,30 @@
-# 02 – Download plan
+# 02 – Download plan (salleurl.edu)
 
 Last updated: 2026-05-03
 Owner: Joe (decisions) + Claude (execution)
-Status: **Approved scope (UG + Grad), implementation pending.**
+Status: **Draft, awaiting answers to open questions before Phase 2 starts.**
 
 ## Goal
 
-Produce a complete, reproducible local mirror of the La Salle academic
-catalog suitable for converting to markdown and indexing into a wiki for the
-AI assistant. The mirror must cover every undergraduate and graduate program
-plus the supporting course and policy pages, in three forms: original HTML,
-per-page PDF, and full-catalog PDFs.
+Produce a complete, reproducible local mirror of La Salle Campus
+Barcelona's academic offering (`salleurl.edu/en/education/...`), suitable
+for converting to markdown and indexing into a wiki for the AI assistant.
+Capture every program plus the subject pages they reference. Keep the run
+resumable, polite, and re-runnable when the catalog updates.
 
 ## Approach in one paragraph
 
-Pull the sitemap. Filter the URL list down to the sections we care about
-(`/undergraduate/*`, `/graduate/*`, `/general-info/*`, plus the two
-catalog-wide PDFs). For each URL: fetch the HTML, derive the per-page PDF URL
-deterministically, fetch the PDF, write both to disk under a path that
-mirrors the URL. Record per-page metadata (URL, title, school, program type,
-fetch timestamp, hashes) into a single `manifest.jsonl`. Rate-limit
-politely. Re-runnable end to end.
+There is no sitemap, so the crawler is **two-phase, breadth-first, and
+resumable**. Phase A enumerates every program URL by walking the
+category index pages plus the paginated Programme Browser, and writes
+them to a `seed_urls.json`. Phase B walks the seeds: for each program
+fetch its base URL and the seven known subpages (`/goals`,
+`/requirements`, `/syllabus`, `/methodology`, `/academics`,
+`/career-opportunities`), tolerate 404s, then extract subject links from
+each `/syllabus` page and fetch those too (deduplicated globally). Every
+fetch goes through the same polite client (10 s crawl-delay, retry with
+backoff, idempotent writes). A `manifest.jsonl` records each URL once,
+making re-runs fast.
 
 ## Phases
 
@@ -30,92 +34,131 @@ See [`01-exploration-findings.md`](./01-exploration-findings.md).
 
 ### Phase 2 – Bulk download (this plan)
 
-Steps, in order:
+Implement a single CLI: `scripts/fetch_catalog.py`. Subcommands:
 
-1. **Fetch sitemap.** `GET /sitemap.xml`, parse 344 `<loc>` entries, save raw
-   sitemap to `data/sitemap.xml` with the fetch timestamp.
-2. **Filter URLs.** Keep prefixes `/undergraduate/`, `/graduate/`,
-   `/general-info/`, plus the four index pages (`/`, `/programs/`,
-   `/azindex/`, `/catalogcontents/`). Expected: ~330 URLs.
-3. **Add the two whole-catalog PDFs** by hand:
-   - `/pdf/La Salle University Catalog 2023-2024 - Undergraduate.pdf`
-   - `/pdf/La Salle University Catalog 2023-2024 - Graduate.pdf`
-   (Update slugs once a 2025-2026 version is published — recheck the print
-   dialog on a current page to confirm the latest filename.)
-4. **For each HTML URL:**
-   1. `GET` the page, write the raw response body to
-      `data/raw_html/<path-from-url>.html`.
-   2. Compute per-page PDF URL by appending `<last-segment>.pdf` to the page
-      URL. `HEAD` it; if 200, `GET` and write to
-      `data/pdf/<path-from-url>.pdf`. Record the PDF size + sha256.
-   3. Extract a small set of fields from the HTML — title, breadcrumb,
-      catalog edition, list of tab containers, list of in-page course codes
-      — and append a record to `manifest.jsonl`.
-5. **Politeness controls:**
-   - One request at a time, **1 request/sec** baseline (sleep 1.0s between
-     requests). 344 URLs × 2 fetches each ≈ 700 requests ≈ 12 minutes.
-   - Custom `User-Agent: LaSalleCatalogMirror/0.1 (joe.carr.data@gmail.com)`
-     so the site owner can contact us if needed.
-   - Honor `robots.txt`: skip every disallowed prefix.
-   - Retry with exponential backoff on 5xx (max 3 retries); on 404, log and
-     continue (404 on the per-page PDF is acceptable for index pages).
-6. **Idempotency:** before writing, compare sha256 with the existing file —
-   if identical, skip rewrite and just refresh the timestamp in the
-   manifest. This makes weekly re-runs cheap.
-7. **Verification step:**
-   - Sitemap count ≥ 340 and ≤ 400.
-   - HTML success rate ≥ 99%, log all failures.
-   - At least 90% of program pages produced a PDF (some index/policy pages
-     legitimately have none).
-   - Spot-check 5 random programs visually (open HTML + PDF) before
-     declaring success.
+| Subcommand | What it does |
+|---|---|
+| `enumerate` | Build the seed list by crawling category pages + Programme Browser. Writes `data/seed_urls.json`. Does not fetch program detail. |
+| `download` | Walk the seed list. For each program: fetch base + 7 known subpages, save HTML, extract subject links, queue them. Dedupe globally. Append to `manifest.jsonl`. |
+| `verify` | Run integrity checks (counts, status codes, expected subpages, broken links). |
+| `clean` | Optional: delete files not referenced in the manifest (orphans from earlier runs). |
 
-### Phase 3 – HTML → markdown conversion (separate task, not in this plan)
-
-High-level approach we'll fill in later: per-page parser keyed on the
-CourseLeaf container IDs (`#overviewtextcontainer`,
-`#requirementstextcontainer`, etc.), produce one markdown file per program
-under `data/markdown/`, plus a YAML front-matter block with the metadata
-fields collected in phase 2. Course department pages get one markdown file
-per department with one heading per course.
-
-### Phase 4 – Wiki build / indexing (separate task)
-
-Out of scope for this plan, but the storage layout in
-[`03-storage-layout.md`](./03-storage-layout.md) is designed so phase 4 can
-treat `data/markdown/` as the source of truth and ignore the raw HTML.
-
-## Tools
+Recommended stack:
 
 - **Python 3.11+**
-- `requests` for HTTP
-- `lxml` (or `selectolax` if speed matters) for parsing
-- `tqdm` for progress
-- A single script: `scripts/fetch_catalog.py` with subcommands
-  `sitemap`, `download`, `verify`, `clean`. Use `argparse`. Tests minimal but
-  present (parsing helpers).
-- Output: `data/sitemap.xml`, `data/raw_html/...`, `data/pdf/...`,
-  `data/manifest.jsonl`, `data/run.log`.
+- `requests` (HTTP) with a `Session` for connection reuse
+- `selectolax` (fast HTML parser; or `lxml` if a richer XPath story is
+  needed)
+- `tenacity` (retry with exponential backoff)
+- `tqdm` (progress)
+- `typer` + `rich` (CLI; per the conversation about Python CLIs)
+- Stdlib `json`, `pathlib`, `urllib.parse`, `hashlib`, `time`, `logging`
+
+#### Phase 2A – `enumerate`
+
+1. Fetch each category index page once:
+   - `/en/education/degrees`
+   - `/en/education/masters-postgraduates`
+   - `/en/education/doctorate`
+   - `/en/education/dual-degrees`
+   - `/en/education/specialization-course`
+   - `/en/education/online-training`
+   - `/en/education/summer-school`
+2. Fetch the Programme Browser pages:
+   - `/en/education/course-browser?page=0` → `?page=40`
+3. From each, extract `<a href="/en/education/<slug>">` links where the
+   path has exactly 4 segments and the link text length > 3 chars.
+4. Tag each entry with which source(s) it came from (so we can spot a
+   program that's only in the Browser and not in any category page, or
+   vice versa).
+5. Write `data/seed_urls.json` as a list of `{url, title, source[]}`.
+   Expected size: 200–400 entries.
+
+#### Phase 2B – `download`
+
+For each seed URL `U`:
+
+1. Fetch `U` itself → save to `data/raw_html/<path>.html`.
+2. For each `suffix` in `["goals", "requirements", "syllabus",
+   "methodology", "academics", "career-opportunities"]`:
+   - Fetch `U + "/" + suffix`. If 200, save. If 404, log and skip
+     (shorter programs legitimately omit subpages).
+3. After fetching `U/syllabus` (if present), extract subject links of the
+   form `/en/<slug>` (NOT under `/en/education/`) and add them to a
+   global subject queue, deduplicated by URL.
+4. After all programs are processed, walk the subject queue. Each
+   subject is fetched once even if referenced by N programs; backlinks
+   are recorded in the manifest.
+5. Every successful fetch appends one line to `manifest.jsonl` with:
+   - `run_id`, `url`, `kind` (program-base | program-subpage | subject |
+     category-index), `parent_url` (for subpages and subjects),
+     `path`, `status`, `sha256`, `fetched_at`, `lang`,
+     `title`, `h1`.
+
+#### Politeness
+
+- **Default 10 s sleep between requests** (matches `Crawl-delay`). Override
+  via `--delay-seconds N`. We will not go below 3 seconds without checking
+  in with the user first.
+- Custom `User-Agent: SalleUrlCatalogMirror/0.1
+  (joe.carr.data@gmail.com)`.
+- Retry policy via `tenacity`: 3 attempts on 5xx and connection errors,
+  exponential backoff starting at 30 seconds. **Stop hard on 429** (rate
+  limit) and surface to the operator.
+- Idempotent writes: compare sha256 of the new body against the existing
+  file before rewriting.
+
+#### Resume support
+
+Every fetch starts by checking `manifest.jsonl` for a previous successful
+record of the same URL within `--resume-window` (default 24 hours). If
+present, skip. This means a crashed overnight run can be re-launched
+with the same command and only does the missing work.
+
+#### Verification (must pass before declaring success)
+
+- ≥ 21 bachelor's-style program URLs are present in `seed_urls.json`
+  (sanity check against the known undergraduate count).
+- `manifest.jsonl` contains a `program-base` record for every seed URL,
+  with HTTP 200.
+- For at least 80 % of program-base records, **at least three** of the
+  seven program subpages were fetched successfully.
+- Subject-page count is between 300 and 3,000 (anything outside this
+  range probably means the syllabus extractor is broken).
+- Spot-check 5 random programs: open the saved HTML for the base page
+  and the syllabus subpage, confirm they look right.
+
+### Phase 3 – HTML → markdown (separate task, not in this plan)
+
+Outline only: per-page parser keyed off Drupal's `field-*` and
+`region-*` containers, produce one markdown file per program (with a
+section per subpage) and one per subject. YAML front-matter with the
+metadata captured in Phase 2.
+
+### Phase 4 – Wiki indexing (separate task)
+
+Out of scope here.
 
 ## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Network allowlist blocks `catalog.lasalle.edu` from the sandbox | Run the script on the user's machine OR through a connected Cowork shell with egress; alternative path documented in `aha.md`. |
-| CourseLeaf changes URL conventions in next edition | The scraper is sitemap-driven, so it survives URL changes inside the same domain. The PDF-URL convention is the only hard-coded rule; if it breaks, we fall back to parsing the "Download Page (PDF)" anchor on each HTML page. |
-| Course descriptions hidden behind hover ribbits | Phase 3 concern, not phase 2. We capture the page as-is now; descriptions exist on the per-department `/courses-az/<dept>/` pages we already crawl. |
-| Quietly losing a program when the catalog updates | Manifest diff: every run writes a new line per URL. A second script `scripts/diff_manifest.py` can compare runs and flag added/removed/modified pages. |
+| Network allowlist blocks `salleurl.edu` from the sandbox | Run on the user's Mac, or the user adds the host to Cowork's egress allowlist (Settings → Capabilities). |
+| Drupal page templates differ between content types (bachelor vs. master vs. specialization course) | Parser is best-effort and per-content-type; Phase 2 saves raw HTML so Phase 3 can re-parse without re-downloading. |
+| Crawl-delay turns the run into 8+ hours | Resume support + idempotent writes make multi-session runs cheap. Or: ask user to accept a faster delay. |
+| Session-blocked JS in some browsers (we hit this in exploration) | We're using plain `requests` for the actual scrape, so this is only a problem for the Chrome-driven exploration. |
+| URLs change between catalog editions | Same-domain URLs at salleurl.edu are stable per academic year. Re-running `enumerate` after a year flip will surface added/removed programs in a manifest diff. |
+| Subject slug collision between programs | Already handled: subject pages are deduped by URL globally; `manifest.jsonl` records every program that referenced each subject. |
 
-## Decisions already locked in (from user)
+## Open questions for the user (must answer before kickoff)
 
-- Scope: undergraduate **+** graduate (no archives).
-- Captures: HTML, per-page PDF, full-catalog PDF — all three.
-- Runtime: Python + `requests` + sitemap, run reproducibly.
-- Project layout: `/docs`, `/data`, `/scripts` at the project root.
+1. **Languages** – English only, or all three (`/en/`, `/es/`, `/ca/`)?
+2. **Program-type scope** – Bachelors + masters + PhD only, or also
+   specialization, dual, online, summer, executive?
+3. **Crawl rate** – Strict 10 s as `robots.txt` requests (overnight run),
+   or 3 s (riskier but ~3x faster)?
+4. **Run mode** – One-shot, or scheduled (weekly/monthly)?
+5. **Where it runs** – User's Mac, or Cowork sandbox after allowlisting
+   the host?
 
-## Decisions resolved (2026-05-04)
-
-1. **Where the script runs:** On the user's Mac (unrestricted internet).
-2. **Cadence:** One-shot for now. Scheduling can be added later once the
-   script is proven.
-3. **Markdown chunk granularity for phase 3:** TBD before phase 3 begins.
+I will not start Phase 2 until questions 1–5 are answered.

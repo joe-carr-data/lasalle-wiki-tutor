@@ -1,98 +1,121 @@
-# 03 – Storage layout
+# 03 – Storage layout (salleurl.edu)
 
 Last updated: 2026-05-03
 
-The local mirror mirrors the URL structure of the catalog 1:1 so that
-mapping a wiki page back to its source is trivial.
+The local mirror mirrors the URL structure of the site 1:1 so mapping a
+wiki page back to its source is trivial. There is no per-page PDF on
+this site, so we drop the `pdf/` tree entirely; what we save is HTML and
+a small set of ancillary PDFs (scholarship docs, etc.) collected along
+the way.
 
 ## Tree
 
 ```
-lasalle-catalog/
-├── docs/                              # Project documentation (this folder)
-│   ├── INDEX.md                       # Always start here
+lasalle-catalog/                              # (folder name kept for git history; project is salleurl)
+├── docs/
+│   ├── INDEX.md
 │   ├── 01-exploration-findings.md
 │   ├── 02-download-plan.md
-│   ├── 03-storage-layout.md           # ← this file
-│   ├── aha.md                         # Short, opinionated lessons
-│   └── archive/                       # Superseded docs go here
+│   ├── 03-storage-layout.md                  # ← this file
+│   ├── aha.md
+│   └── archive/
+│       └── 2026-05-03-wrong-university/      # see README inside
 ├── scripts/
-│   ├── fetch_catalog.py               # Phase 2 – HTML+PDF downloader
-│   ├── parse_to_markdown.py           # Phase 3 – HTML → md (later)
-│   └── diff_manifest.py               # Compare two manifest.jsonl runs
+│   ├── fetch_catalog.py                      # Phase 2 – Typer CLI: enumerate / download / verify / clean
+│   ├── parse_to_markdown.py                  # Phase 3 – HTML → md (later)
+│   └── diff_manifest.py                      # Compare two manifest.jsonl runs
 └── data/
-    ├── sitemap.xml                    # Snapshot of /sitemap.xml at fetch time
-    ├── manifest.jsonl                 # One line per URL, see schema below
-    ├── run.log                        # Append-only log per run
-    ├── raw_html/                      # Mirrors URL path
-    │   ├── undergraduate/
-    │   │   ├── arts-sciences/
-    │   │   │   └── accounting-bsba.html
-    │   │   ├── business/...
-    │   │   └── courses-az/csit.html
-    │   ├── graduate/
-    │   │   ├── masters/artificial-intelligence-ms.html
-    │   │   └── doctorates/...
-    │   └── general-info/...
-    ├── pdf/                           # Same path shape as raw_html, .pdf extension
-    │   ├── undergraduate/...
-    │   ├── graduate/...
-    │   └── _catalog/                  # Whole-catalog PDFs
-    │       ├── 2023-2024-undergraduate.pdf
-    │       └── 2023-2024-graduate.pdf
-    └── markdown/                      # Phase 3 output (initially empty)
+    ├── seed_urls.json                        # Phase 2A output
+    ├── manifest.jsonl                        # One line per fetched URL
+    ├── run.log                               # Append-only log per run
+    ├── raw_html/                              # Mirrors URL path
+    │   ├── en/
+    │   │   ├── education/
+    │   │   │   ├── degrees.html               # category index
+    │   │   │   ├── masters-postgraduates.html
+    │   │   │   ├── doctorate.html
+    │   │   │   ├── course-browser_page=0.html # query string flattened to filename
+    │   │   │   ├── ...
+    │   │   │   ├── bachelor-animation-and-vfx.html
+    │   │   │   ├── bachelor-animation-and-vfx/
+    │   │   │   │   ├── goals.html
+    │   │   │   │   ├── requirements.html
+    │   │   │   │   ├── syllabus.html
+    │   │   │   │   ├── methodology.html
+    │   │   │   │   ├── academics.html
+    │   │   │   │   └── career-opportunities.html
+    │   │   │   └── master-user-experience.html
+    │   │   └── escultura-anatomia-y-herramientas-digitales.html   # subject pages
+    │   └── ...
+    ├── pdf/                                  # Ad-hoc PDFs (scholarships, credit convalidation, ...)
+    │   └── sites/default/files/content/entities/document/file/9397/
+    │       └── grants-26-27-la-salle-campus-barcelona.pdf
+    └── markdown/                             # Phase 3 output (initially empty)
         └── ...
 ```
 
 ## URL → path rule
 
-Strip the protocol and host, drop the trailing slash, then place the file at
-that path with the chosen extension. Examples:
+1. Strip the protocol and host.
+2. If the path ends with `/`, drop the trailing slash and add `.html`.
+3. If the URL has a query string, replace `?` and `&` with `_` so it
+   lands in a single filename. Example:
+   `/en/education/course-browser?page=3` →
+   `data/raw_html/en/education/course-browser_page=3.html`.
+4. PDFs keep their original path under `data/pdf/`.
 
-- `https://catalog.lasalle.edu/graduate/masters/artificial-intelligence-ms/`
-  → `data/raw_html/graduate/masters/artificial-intelligence-ms.html`
-  → `data/pdf/graduate/masters/artificial-intelligence-ms.pdf`
-- `https://catalog.lasalle.edu/undergraduate/courses-az/csit/`
-  → `data/raw_html/undergraduate/courses-az/csit.html`
-  → `data/pdf/undergraduate/courses-az/csit.pdf`
+## seed_urls.json schema
 
-Index pages (paths ending with no slug after the section, e.g.
-`/undergraduate/`) get the file name `_index.html`.
+```json
+[
+  {
+    "url": "https://www.salleurl.edu/en/education/bachelor-animation-and-vfx",
+    "title": "Bachelor in Animation and VFX",
+    "source": ["course-browser?page=2", "/en/education/degrees"],
+    "kind_guess": "bachelor"
+  }
+]
+```
 
 ## manifest.jsonl schema
 
-One JSON object per line. Append-only per run; a `run_id` ties records
-together for diffing.
+One JSON object per line. Append-only; `run_id` ties records together
+for diffing.
 
 ```json
 {
   "run_id": "2026-05-03T18:22:11Z",
-  "url": "https://catalog.lasalle.edu/graduate/masters/artificial-intelligence-ms/",
-  "html_path": "data/raw_html/graduate/masters/artificial-intelligence-ms.html",
-  "pdf_url":  "https://catalog.lasalle.edu/graduate/masters/artificial-intelligence-ms/artificial-intelligence-ms.pdf",
-  "pdf_path": "data/pdf/graduate/masters/artificial-intelligence-ms.pdf",
-  "title": "Artificial Intelligence, M.S.",
-  "school": "School of Arts and Sciences",
-  "program_type": "masters",
-  "level": "graduate",
-  "tabs_present": ["overview","degreeinfo","learningoutcomes","requirements","coursesequence","courses","faculty"],
-  "course_codes": ["CSC 555","CSC 580","..."],
-  "html_sha256": "…",
-  "pdf_sha256": "…",
-  "html_status": 200,
-  "pdf_status": 200,
+  "url": "https://www.salleurl.edu/en/education/bachelor-animation-and-vfx",
+  "kind": "program-base",
+  "parent_url": null,
+  "path": "data/raw_html/en/education/bachelor-animation-and-vfx.html",
+  "lang": "en",
+  "title": "Degree in Animation and VFX | La Salle Campus Barcelona",
+  "h1": "Bachelor in Animation and VFX",
+  "subpages_present": ["goals","requirements","syllabus","methodology","academics","career-opportunities"],
+  "linked_subjects": ["/en/escultura-anatomia-y-herramientas-digitales", "/en/proyectos-i-0", "..."],
+  "linked_pdfs": ["/sites/default/files/content/entities/document/file/9397/grants-26-27-la-salle-campus-barcelona.pdf"],
+  "http_status": 200,
+  "sha256": "…",
   "fetched_at": "2026-05-03T18:23:04Z"
 }
 ```
 
+For subject pages, `kind` is `"subject"` and `parent_url` is the
+program-base URL that introduced it; if a subject is referenced by
+several programs, the manifest gets one record per discovery (or, more
+efficiently, one record with a `parent_urls` array — Phase 2
+implementer chooses).
+
 ## Why this shape
 
-- **Mirrors the URL** so debugging is trivial: paste the URL into the address
-  bar, paste it into the file tree, both work.
-- **HTML and PDF kept separate** so the markdown step in phase 3 can ignore
-  PDFs entirely (HTML is the easier source).
-- **Manifest is line-delimited JSON**, not one big JSON document, so each run
-  appends without rewriting the world and `diff_manifest.py` can stream.
-- **`docs/archive/`** matches the user's stated documentation conventions —
-  superseded docs are preserved, not deleted, and `INDEX.md` always points to
-  the current one.
+- **Mirrors the URL** so debugging is trivial: paste the URL into the
+  address bar, paste it into the file tree, both work.
+- **No `pdf/` per program** because the site does not produce them. The
+  `data/pdf/` directory only holds the handful of ancillary docs we
+  encounter.
+- **`seed_urls.json` separate from `manifest.jsonl`** so the
+  enumeration phase is cheap to re-run independently of the download
+  phase.
+- **`docs/archive/`** preserves the wrong-university docs as historical
+  context. Per project conventions, we never delete docs; we move them.
