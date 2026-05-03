@@ -113,14 +113,9 @@ treat `data/markdown/` as the source of truth and ignore the raw HTML.
 - Runtime: Python + `requests` + sitemap, run reproducibly.
 - Project layout: `/docs`, `/data`, `/scripts` at the project root.
 
-## Open decisions for phase 2 kickoff
+## Decisions resolved (2026-05-04)
 
-1. **Where the script runs.** Two options:
-   - On the user's Mac (host has unrestricted internet).
-   - In the Cowork sandbox, only if the user adds `catalog.lasalle.edu` to the
-     egress allowlist (Settings → Capabilities).
-2. **Cadence.** One-shot now, or scheduled (e.g. weekly) so the wiki stays
-   current? Easy to add via the `schedule` skill once the script works.
-3. **Markdown chunk granularity for phase 3.** One file per program is the
-   default; users who want finer chunks (one file per tab) should say so
-   before phase 3 begins.
+1. **Where the script runs:** On the user's Mac (unrestricted internet).
+2. **Cadence:** One-shot for now. Scheduling can be added later once the
+   script is proven.
+3. **Markdown chunk granularity for phase 3:** TBD before phase 3 begins.

@@ -1,0 +1,13 @@
+[project]
+name = "lasalle-catalog"
+version = "0.1.0"
+description = "Local mirror and wiki source for the La Salle University academic catalog"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "lxml>=5.0",
+    "typer>=0.12",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]

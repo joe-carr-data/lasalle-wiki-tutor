@@ -58,6 +58,13 @@ not include it. Two ways forward when phase 2 runs:
 For exploration we used the Claude-in-Chrome MCP, which does have access.
 That worked fine for spot checks but is too slow for 700 fetches.
 
+## Project tooling: uv + Typer
+
+We use **uv** for Python environment management (`uv sync` creates `.venv`
+and installs deps from `pyproject.toml`). The CLI uses **Typer** with
+**rich** for colored output and progress bars. Run scripts with
+`uv run python scripts/fetch_catalog.py <subcommand>`.
+
 ## The course search API is a tempting trap
 
 `/course-search/api/` looks like the obvious enumeration shortcut and

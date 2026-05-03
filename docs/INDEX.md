@@ -1,14 +1,14 @@
 # La Salle Catalog Wiki – Documentation Index
 
-Last updated: 2026-05-03
+Last updated: 2026-05-04
 
 This index points to the most recent and authoritative document for each
 topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **1 – Exploration & planning** (complete)
-Next phase: **2 – Bulk download** (pending user go-ahead)
+Phase: **2 – Bulk download** (script implemented, ready to run)
+Next phase: **3 – HTML to markdown conversion** (not started)
 
 ## Documents
 

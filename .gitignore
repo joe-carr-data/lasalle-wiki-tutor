@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# uv
+uv.lock
+
+# Data (too large for git; reproduced by running the script)
+data/raw_html/
+data/pdf/
+data/manifest.jsonl
+data/run.log
+data/sitemap.xml
+
+# macOS
+.DS_Store
