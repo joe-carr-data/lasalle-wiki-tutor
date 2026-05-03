@@ -428,23 +428,26 @@ def enumerate(
                 progress.advance(task)
 
     # --- Programme Browser (paginated) ---
-    console.print("Crawling Programme Browser (paginated)...")
     for lang in LANGUAGES:
         page_num = 0
-        while True:
-            url = f"{BASE_URL}/{lang}/education/course-browser?page={page_num}"
-            resp = fetch(session, url, delay=delay_seconds)
-            if resp and resp.status_code == 200:
-                links = extract_program_links(resp.content, lang)
-                if not links:
-                    log.info("Browser %s page %d: 0 links, stopping", lang, page_num)
+        with console.status(f"[bold]Browser /{lang}/ page {page_num}...") as status:
+            while True:
+                url = f"{BASE_URL}/{lang}/education/course-browser?page={page_num}"
+                status.update(f"[bold]Browser /{lang}/ page {page_num} ({len(seen)} programs so far)")
+                resp = fetch(session, url, delay=delay_seconds)
+                if resp and resp.status_code == 200:
+                    links = extract_program_links(resp.content, lang)
+                    if not links:
+                        log.info("Browser %s page %d: 0 links, stopping", lang, page_num)
+                        console.print(f"  /{lang}/ browser: {page_num} pages, no more links")
+                        break
+                    _add(links, f"course-browser?page={page_num}")
+                    log.info("Browser %s page %d: %d links", lang, page_num, len(links))
+                    page_num += 1
+                else:
+                    log.warning("Browser page failed: %s", url)
+                    console.print(f"  /{lang}/ browser: stopped at page {page_num} (failed)")
                     break
-                _add(links, f"course-browser?page={page_num}")
-                log.info("Browser %s page %d: %d links", lang, page_num, len(links))
-                page_num += 1
-            else:
-                log.warning("Browser page failed: %s", url)
-                break
 
     # --- Write seed file ---
     seeds = sorted(seen.values(), key=lambda s: s["url"])
