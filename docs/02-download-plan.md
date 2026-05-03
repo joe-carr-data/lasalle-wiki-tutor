@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-03
 Owner: Joe (decisions) + Claude (execution)
-Status: **Draft, awaiting answers to open questions before Phase 2 starts.**
+Status: **Approved, all questions resolved. Implementation in progress.**
 
 ## Goal
 
@@ -150,15 +150,12 @@ Out of scope here.
 | URLs change between catalog editions | Same-domain URLs at salleurl.edu are stable per academic year. Re-running `enumerate` after a year flip will surface added/removed programs in a manifest diff. |
 | Subject slug collision between programs | Already handled: subject pages are deduped by URL globally; `manifest.jsonl` records every program that referenced each subject. |
 
-## Open questions for the user (must answer before kickoff)
+## Decisions resolved (2026-05-04)
 
-1. **Languages** – English only, or all three (`/en/`, `/es/`, `/ca/`)?
-2. **Program-type scope** – Bachelors + masters + PhD only, or also
-   specialization, dual, online, summer, executive?
-3. **Crawl rate** – Strict 10 s as `robots.txt` requests (overnight run),
-   or 3 s (riskier but ~3x faster)?
-4. **Run mode** – One-shot, or scheduled (weekly/monthly)?
-5. **Where it runs** – User's Mac, or Cowork sandbox after allowlisting
-   the host?
-
-I will not start Phase 2 until questions 1–5 are answered.
+1. **Languages:** `/en/` + `/es/` (English and Spanish; no Catalan).
+2. **Program-type scope:** All types (bachelors, masters, PhD,
+   specialization, dual, online, summer, executive).
+3. **Crawl rate:** 3 s between requests (default `--delay-seconds 3`).
+   Resume support mitigates any 429 risk.
+4. **Run mode:** One-shot for now. Scheduling can be added later.
+5. **Where it runs:** On the user's Mac (unrestricted internet).
