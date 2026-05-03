@@ -74,6 +74,14 @@ can. For Phase 2 either:
 2. Add `salleurl.edu` and `www.salleurl.edu` to Cowork's egress
    allowlist (Settings → Capabilities).
 
+## The Programme Browser paginates forever
+
+`/en/education/course-browser?page=N` never returns an empty page. It
+keeps returning ~8 links per page well past page 80+, likely cycling
+through the same programs. You **cannot** use "0 links → stop" as the
+termination condition. Instead stop after N consecutive pages with zero
+new *unique* programs (we use 3) or a hard page cap (we use 60).
+
 ## The Chrome MCP blocks JS that reads cookie/query-string strings
 
 We hit "BLOCKED: Cookie/query string data" when our exploration JS
