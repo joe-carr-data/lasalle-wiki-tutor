@@ -7,11 +7,7 @@ __pycache__/
 uv.lock
 
 # Data (too large for git; reproduced by running the script)
-data/raw_html/
-data/pdf/
-data/manifest.jsonl
-data/run.log
-data/sitemap.xml
+data/
 
 # macOS
 .DS_Store
