@@ -59,15 +59,61 @@ PDF_DIR = DATA_DIR / "pdf"
 
 LANGUAGES = ("en", "es")
 
-CATEGORY_SLUGS = (
-    "degrees",
-    "masters-postgraduates",
-    "doctorate",
-    "dual-degrees",
-    "specialization-course",
-    "online-training",
-    "summer-school",
-)
+# Per-language configuration: the EN and ES sites use different URL structures.
+LANG_CONFIG = {
+    "en": {
+        "education_prefix": "/en/education/",
+        "category_pages": [
+            "/en/education/degrees",
+            "/en/education/masters-postgraduates",
+            "/en/education/doctorate",
+            "/en/education/dual-degrees",
+            "/en/education/specialization-course",
+            "/en/education/online-training",
+            "/en/education/summer-school",
+        ],
+        "browser_url": "/en/education/course-browser",
+    },
+    "es": {
+        "education_prefix": "/es/estudios/",
+        "category_pages": [
+            "/es/estudios/grados",
+            "/es/estudios/masters-y-postgrados",
+            "/es/estudios/doctorado",
+            "/es/estudios/dobles-titulaciones",
+            "/es/estudios/cursos-de-especializacion",
+            "/es/estudios/formacion-online",
+            "/es/estudios/escuela-de-verano",
+        ],
+        "browser_url": "/es/estudios/buscador-de-estudios",
+    },
+}
+
+# Slugs that are area/topic groupings or navigation, not individual programs.
+# These appear under /{lang}/education/ or /{lang}/estudios/ but are not programs.
+NON_PROGRAM_SLUGS = {
+    # EN category slugs
+    "degrees", "masters-postgraduates", "doctorate", "dual-degrees",
+    "specialization-course", "online-training", "summer-school",
+    "course-browser", "undergraduate-degrees",
+    # EN area groupings
+    "architecture-and-construction", "digital-arts-animation-and-vfx",
+    "computer-science", "ict-engineering-and-technology",
+    "business-and-management", "project-management",
+    "technology-and-health", "mba",
+    # ES category slugs
+    "grados", "masters-y-postgrados", "doctorado", "dobles-titulaciones",
+    "cursos-de-especializacion", "formacion-online", "escuela-de-verano",
+    "buscador-de-estudios",
+    # ES area groupings
+    "arquitectura-y-edificacion", "arte-digital-animacion-y-vfx",
+    "informatica", "ingenierias-tic-y-tecnologia",
+    "business-y-management", "direccion-de-proyectos",
+    "tecnologia-y-salud",
+}
+
+# Keep the old constant for backward compat in guess_kind
+CATEGORY_SLUGS = NON_PROGRAM_SLUGS
 
 PROGRAM_SUBPAGES = (
     "goals",
@@ -269,35 +315,42 @@ def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
     """
     tree = html.fromstring(html_bytes)
     results: list[dict[str, str]] = []
-    prefix = f"/{lang}/education/"
+    config = LANG_CONFIG[lang]
+    prefix = config["education_prefix"]
 
     for a in tree.iter("a"):
         href = a.get("href", "")
         text = (a.text_content() or "").strip()
 
-        # Must be under /{lang}/education/{slug}
+        # Must be under the education prefix for this language
         if not href.startswith(prefix):
             continue
 
-        # Strip trailing slash for comparison
+        # Skip links with query strings (advanced search filters, etc.)
+        if "?" in href:
+            continue
+
+        # Strip trailing slash, split into segments
         clean_href = href.rstrip("/")
         segments = clean_href.split("/")
 
-        # Should be /{lang}/education/{slug} → 4 segments including empty first
+        # Must be exactly /{lang}/{education-word}/{slug} → 4 segments
         # e.g. ['', 'en', 'education', 'bachelor-animation-and-vfx']
-        if len(segments) < 4:
+        # Reject deeper paths like /en/education/degrees/academic-information
+        if len(segments) != 4:
             continue
 
-        # Skip the category index pages themselves
         slug = segments[3]
-        if slug in CATEGORY_SLUGS or slug in ("course-browser", ""):
+
+        # Skip known non-program slugs (categories, area groupings, browser)
+        if slug in NON_PROGRAM_SLUGS or not slug:
             continue
 
         # Filter short/empty text
         if len(text) <= 3:
             continue
 
-        full_url = urljoin(BASE_URL, href.rstrip("/"))
+        full_url = urljoin(BASE_URL, clean_href)
         results.append({"url": full_url, "title": text})
 
     return results
@@ -306,12 +359,12 @@ def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
 def extract_subject_links(html_bytes: bytes, lang: str) -> list[str]:
     """Extract subject page links from a syllabus page.
 
-    Subject URLs are /{lang}/<slug> where slug is NOT under /education/.
+    Subject URLs are /{lang}/<slug> where slug is NOT under the education prefix.
     """
     tree = html.fromstring(html_bytes)
     subjects: list[str] = []
     prefix = f"/{lang}/"
-    edu_prefix = f"/{lang}/education/"
+    edu_prefix = LANG_CONFIG[lang]["education_prefix"]
 
     for a in tree.iter("a"):
         href = a.get("href", "")
@@ -405,7 +458,7 @@ def enumerate(
                 }
 
     # --- Category index pages ---
-    total_cat = len(CATEGORY_SLUGS) * len(LANGUAGES)
+    all_cat_pages = [(lang, path) for lang in LANGUAGES for path in LANG_CONFIG[lang]["category_pages"]]
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -413,28 +466,28 @@ def enumerate(
         TaskProgressColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Category pages", total=total_cat)
-        for lang in LANGUAGES:
-            for slug in CATEGORY_SLUGS:
-                url = f"{BASE_URL}/{lang}/education/{slug}"
-                resp = fetch(session, url, delay=delay_seconds)
-                if resp and resp.status_code == 200:
-                    links = extract_program_links(resp.content, lang)
-                    _add(links, f"/{lang}/education/{slug}")
-                    log.info("Category %s: %d links", url, len(links))
-                else:
-                    status = resp.status_code if resp else "no response"
-                    log.warning("Category page failed: %s (status=%s)", url, status)
-                progress.advance(task)
+        task = progress.add_task("Category pages", total=len(all_cat_pages))
+        for lang, cat_path in all_cat_pages:
+            url = f"{BASE_URL}{cat_path}"
+            resp = fetch(session, url, delay=delay_seconds)
+            if resp and resp.status_code == 200:
+                links = extract_program_links(resp.content, lang)
+                _add(links, cat_path)
+                log.info("Category %s: %d links", url, len(links))
+            else:
+                status_code = resp.status_code if resp else "no response"
+                log.warning("Category page failed: %s (status=%s)", url, status_code)
+            progress.advance(task)
 
     # --- Programme Browser (paginated) ---
     STALE_PAGE_LIMIT = 3    # stop after N consecutive pages with no new unique programs
     for lang in LANGUAGES:
+        browser_base = LANG_CONFIG[lang]["browser_url"]
         page_num = 0
         stale_streak = 0
         with console.status(f"[bold]Browser /{lang}/ page {page_num}...") as status:
             while True:
-                url = f"{BASE_URL}/{lang}/education/course-browser?page={page_num}"
+                url = f"{BASE_URL}{browser_base}?page={page_num}"
                 status.update(f"[bold]Browser /{lang}/ page {page_num} ({len(seen)} programs so far)")
                 resp = fetch(session, url, delay=delay_seconds)
                 if resp and resp.status_code == 200:
