@@ -726,11 +726,13 @@ def download(
             base_hash = ""
             base_status = 0
             base_is_program = True
+            did_any_fetch = False  # track if we fetched anything new for this seed
             subpages_present: list[str] = []
             linked_subjects: list[str] = []
             linked_pdfs: list[str] = []
 
             if base_url not in already_done:
+                did_any_fetch = True
                 resp = fetch(session, base_url, delay=delay_seconds)
                 if resp and resp.status_code == 200:
                     changed, h = write_if_changed(url_to_html_path(base_url), resp.content)
@@ -765,6 +767,7 @@ def download(
                         subpages_present.append(suffix)
                         continue
 
+                    did_any_fetch = True
                     resp = fetch(session, sub_url, delay=delay_seconds)
                     if resp and resp.status_code == 200:
                         changed, h = write_if_changed(url_to_html_path(sub_url), resp.content)
@@ -805,9 +808,10 @@ def download(
                     elif resp:
                         log.warning("Subpage %d: %s", resp.status_code, sub_url)
 
-            # Fix #5: Write base record AFTER subpage loop with populated fields
+            # Fix #5: Write base record AFTER subpage loop with populated fields.
+            # Skip if nothing was fetched this run (fully resumed seed).
             kind = "program-base" if base_is_program else "non-program"
-            if base_status > 0:
+            if base_status > 0 and did_any_fetch:
                 _append_manifest({
                     "run_id": run_id,
                     "url": base_url,
