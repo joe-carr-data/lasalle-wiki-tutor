@@ -428,13 +428,12 @@ def enumerate(
                 progress.advance(task)
 
     # --- Programme Browser (paginated) ---
-    MAX_BROWSER_PAGES = 60  # safety cap; expected ~40 pages
     STALE_PAGE_LIMIT = 3    # stop after N consecutive pages with no new unique programs
     for lang in LANGUAGES:
         page_num = 0
         stale_streak = 0
         with console.status(f"[bold]Browser /{lang}/ page {page_num}...") as status:
-            while page_num < MAX_BROWSER_PAGES:
+            while True:
                 url = f"{BASE_URL}/{lang}/education/course-browser?page={page_num}"
                 status.update(f"[bold]Browser /{lang}/ page {page_num} ({len(seen)} programs so far)")
                 resp = fetch(session, url, delay=delay_seconds)
@@ -460,8 +459,6 @@ def enumerate(
                     log.warning("Browser page failed: %s", url)
                     console.print(f"  /{lang}/ browser: stopped at page {page_num} (failed)")
                     break
-            else:
-                console.print(f"  /{lang}/ browser: hit max {MAX_BROWSER_PAGES} pages")
 
     # --- Write seed file ---
     seeds = sorted(seen.values(), key=lambda s: s["url"])
