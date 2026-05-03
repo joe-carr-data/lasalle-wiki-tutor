@@ -89,8 +89,9 @@ LANG_CONFIG = {
     },
 }
 
-# Slugs that are area/topic groupings or navigation, not individual programs.
-# These appear under /{lang}/education/ or /{lang}/estudios/ but are not programs.
+# Known non-program slugs kept as a pre-filter optimization only.
+# The authoritative classification happens via is_program_page() using
+# Drupal body classes after fetching the page.
 NON_PROGRAM_SLUGS = {
     # EN category slugs
     "degrees", "masters-postgraduates", "doctorate", "dual-degrees",
@@ -111,9 +112,6 @@ NON_PROGRAM_SLUGS = {
     "business-y-management", "direccion-de-proyectos",
     "tecnologia-y-salud",
 }
-
-# Keep the old constant for backward compat in guess_kind
-CATEGORY_SLUGS = NON_PROGRAM_SLUGS
 
 PROGRAM_SUBPAGES = (
     "goals",
@@ -308,10 +306,47 @@ def _load_resume_set(resume_window_hours: float) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
-    """Extract program links from a category or browser page.
+def is_program_page(html_bytes: bytes) -> bool:
+    """Detect if a page is a program page using Drupal structural signals.
 
-    Returns list of {url, title} dicts.
+    Program pages have body class 'node-type-estudio' and/or an article
+    with class 'node-estudio'. Category/area pages have 'node-type-view-page'.
+    """
+    tree = html.fromstring(html_bytes)
+
+    # Primary signal: body class
+    body = tree.find(".//body")
+    if body is not None:
+        body_class = body.get("class", "")
+        if "node-type-estudio" in body_class:
+            return True
+        if "node-type-view-page" in body_class:
+            return False
+
+    # Secondary signal: article class
+    for article in tree.iter("article"):
+        article_class = article.get("class", "")
+        if "node-estudio" in article_class:
+            return True
+        if "node-view-page" in article_class:
+            return False
+
+    # Tertiary signal: presence of program tabs
+    tabs = tree.get_element_by_id("tabs-estudis", None)
+    if tabs is not None:
+        return True
+
+    # Unknown — default to True so we don't skip legitimate programs
+    log.warning("Could not determine page type from structure, treating as program")
+    return True
+
+
+def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
+    """Extract candidate program links from a category or browser page.
+
+    Returns list of {url, title} dicts. Uses NON_PROGRAM_SLUGS as a
+    pre-filter optimization; authoritative classification happens via
+    is_program_page() after fetching each page.
     """
     tree = html.fromstring(html_bytes)
     results: list[dict[str, str]] = []
@@ -334,15 +369,13 @@ def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
         clean_href = href.rstrip("/")
         segments = clean_href.split("/")
 
-        # Must be exactly /{lang}/{education-word}/{slug} → 4 segments
-        # e.g. ['', 'en', 'education', 'bachelor-animation-and-vfx']
-        # Reject deeper paths like /en/education/degrees/academic-information
+        # Must be exactly /{lang}/{education-word}/{slug} -> 4 segments
         if len(segments) != 4:
             continue
 
         slug = segments[3]
 
-        # Skip known non-program slugs (categories, area groupings, browser)
+        # Pre-filter known non-programs (optimization, not correctness)
         if slug in NON_PROGRAM_SLUGS or not slug:
             continue
 
@@ -359,22 +392,31 @@ def extract_program_links(html_bytes: bytes, lang: str) -> list[dict[str, str]]:
 def extract_subject_links(html_bytes: bytes, lang: str) -> list[str]:
     """Extract subject page links from a syllabus page.
 
-    Subject URLs are /{lang}/<slug> where slug is NOT under the education prefix.
+    Scoped to the main content container (view-tabs-estudis or article)
+    to avoid picking up nav/footer links. Subject URLs are /{lang}/<slug>
+    where slug is NOT under the education prefix.
     """
     tree = html.fromstring(html_bytes)
-    subjects: list[str] = []
     prefix = f"/{lang}/"
     edu_prefix = LANG_CONFIG[lang]["education_prefix"]
 
-    for a in tree.iter("a"):
+    # Find the content container — use the article element (which contains
+    # the program content). The #tabs-estudis element is just the nav tabs
+    # and doesn't contain the subject links themselves.
+    content_root = tree.find(".//article")
+    if content_root is None:
+        log.warning("No content container found for subject extraction, using full page")
+        content_root = tree
+
+    subjects: list[str] = []
+    for a in content_root.iter("a"):
         href = a.get("href", "")
         if href.startswith(edu_prefix):
             continue
         if href.startswith(prefix) and len(href) > len(prefix) + 3:
-            # Ensure it's a simple path, not a deep one
             clean = href.rstrip("/")
             segments = clean.split("/")
-            # /{lang}/{slug} → 3 segments: ['', 'en', 'slug']
+            # /{lang}/{slug} -> 3 segments: ['', 'en', 'slug']
             if len(segments) == 3:
                 full_url = urljoin(BASE_URL, clean)
                 subjects.append(full_url)
@@ -411,23 +453,61 @@ def detect_lang(html_bytes: bytes) -> str:
 
 
 def guess_kind(url: str) -> str:
-    """Guess program kind from URL or category source."""
+    """Guess program kind from URL."""
     lower = url.lower()
-    if "bachelor" in lower or "degree" in lower:
+    if "bachelor" in lower or "degree" in lower or "grado" in lower:
         return "bachelor"
-    if "master" in lower or "postgraduate" in lower:
+    if "master" in lower or "postgraduate" in lower or "postgrado" in lower:
         return "master"
-    if "doctorate" in lower or "phd" in lower:
+    if "doctorate" in lower or "phd" in lower or "doctorado" in lower:
         return "doctorate"
-    if "dual" in lower:
+    if "dual" in lower or "doble" in lower:
         return "dual"
-    if "specialization" in lower:
+    if "specialization" in lower or "especializacion" in lower or "course-" in lower or "curso-" in lower:
         return "specialization"
     if "online" in lower:
         return "online"
-    if "summer" in lower:
+    if "summer" in lower or "verano" in lower:
         return "summer"
     return "other"
+
+
+def _rebuild_subject_queue_from_disk() -> dict[str, list[str]]:
+    """Rebuild the subject queue from previously saved syllabus HTML files.
+
+    This ensures that subjects are not lost on resume when a prior run
+    fetched syllabus pages but crashed before fetching the subjects.
+    """
+    subject_queue: dict[str, list[str]] = {}
+    if not HTML_DIR.exists():
+        return subject_queue
+
+    for syllabus_path in HTML_DIR.rglob("**/syllabus.html"):
+        # Derive the parent program URL from the file path
+        # e.g. data/raw_html/en/education/bachelor-foo/syllabus.html
+        #   -> parent is /en/education/bachelor-foo
+        rel = syllabus_path.relative_to(HTML_DIR)
+        parts = rel.parts  # ('en', 'education', 'bachelor-foo', 'syllabus.html')
+        if len(parts) < 3:
+            continue
+        parent_path = "/" + "/".join(parts[:-1])
+        parent_url = f"{BASE_URL}{parent_path}"
+
+        # Determine language from path
+        lang = parts[0] if parts[0] in LANGUAGES else "en"
+
+        try:
+            html_bytes = syllabus_path.read_bytes()
+            subjects = extract_subject_links(html_bytes, lang)
+            for subj_url in subjects:
+                if subj_url not in subject_queue:
+                    subject_queue[subj_url] = []
+                if parent_url not in subject_queue[subj_url]:
+                    subject_queue[subj_url].append(parent_url)
+        except Exception as exc:
+            log.warning("Failed to parse saved syllabus %s: %s", syllabus_path, exc)
+
+    return subject_queue
 
 
 # ---------------------------------------------------------------------------
@@ -480,11 +560,15 @@ def enumerate(
             progress.advance(task)
 
     # --- Programme Browser (paginated) ---
-    STALE_PAGE_LIMIT = 3    # stop after N consecutive pages with no new unique programs
+    # Stop conditions: stale streak (no new unique programs) OR cycle detection
+    # (same page fingerprint seen before, meaning the paginator is cycling).
+    STALE_PAGE_LIMIT = 3
     for lang in LANGUAGES:
         browser_base = LANG_CONFIG[lang]["browser_url"]
         page_num = 0
         stale_streak = 0
+        seen_fingerprints: set[str] = set()
+        cycle_count = 0
         with console.status(f"[bold]Browser /{lang}/ page {page_num}...") as status:
             while True:
                 url = f"{BASE_URL}{browser_base}?page={page_num}"
@@ -496,17 +580,34 @@ def enumerate(
                         log.info("Browser %s page %d: 0 links, stopping", lang, page_num)
                         console.print(f"  /{lang}/ browser: {page_num} pages, no more links")
                         break
+
+                    # Cycle detection: hash the sorted URLs on this page
+                    page_urls = sorted(l["url"] for l in links)
+                    fp = sha256(",".join(page_urls).encode())
+                    if fp in seen_fingerprints:
+                        cycle_count += 1
+                        log.info("Browser %s page %d: repeated fingerprint (%d)", lang, page_num, cycle_count)
+                        if cycle_count >= 2:
+                            console.print(f"  /{lang}/ browser: cycle detected at page {page_num}, stopping")
+                            break
+                    else:
+                        seen_fingerprints.add(fp)
+                        cycle_count = 0
+
                     before = len(seen)
                     _add(links, f"course-browser?page={page_num}")
                     new_count = len(seen) - before
                     log.info("Browser %s page %d: %d links (%d new)", lang, page_num, len(links), new_count)
+
+                    # Stale streak: no new unique programs
                     if new_count == 0:
                         stale_streak += 1
                         if stale_streak >= STALE_PAGE_LIMIT:
-                            console.print(f"  /{lang}/ browser: {page_num + 1} pages, {STALE_PAGE_LIMIT} consecutive pages with no new programs, stopping")
+                            console.print(f"  /{lang}/ browser: {page_num + 1} pages, {STALE_PAGE_LIMIT} consecutive stale pages, stopping")
                             break
                     else:
                         stale_streak = 0
+
                     page_num += 1
                 else:
                     log.warning("Browser page failed: %s", url)
@@ -571,8 +672,13 @@ def download(
     if already_done:
         console.print(f"Resuming: [green]{len(already_done)}[/green] URLs already fetched within {resume_window}h")
 
-    subject_queue: dict[str, list[str]] = {}  # url -> [parent_urls]
+    # Fix #1: Rebuild subject queue from saved syllabus files on disk
+    subject_queue: dict[str, list[str]] = _rebuild_subject_queue_from_disk()
+    if subject_queue:
+        console.print(f"Rebuilt [green]{len(subject_queue)}[/green] subject URLs from saved syllabus files")
+
     pdf_queue: set[str] = set()
+    non_program_count = 0
 
     # --- Phase 1: Programs + subpages ---
     with Progress(
@@ -589,7 +695,12 @@ def download(
             base_url = seed["url"]
             lang = "es" if "/es/" in base_url else "en"
 
-            # Fetch base page
+            # Collect data for the base record (written AFTER subpage loop - Fix #5)
+            base_title = ""
+            base_h1 = ""
+            base_hash = ""
+            base_status = 0
+            base_is_program = True
             subpages_present: list[str] = []
             linked_subjects: list[str] = []
             linked_pdfs: list[str] = []
@@ -598,96 +709,105 @@ def download(
                 resp = fetch(session, base_url, delay=delay_seconds)
                 if resp and resp.status_code == 200:
                     changed, h = write_if_changed(url_to_html_path(base_url), resp.content)
-                    title, h1 = extract_title_and_h1(resp.content)
+                    base_title, base_h1 = extract_title_and_h1(resp.content)
+                    base_hash = h
+                    base_status = 200
                     linked_pdfs.extend(extract_pdf_links(resp.content))
-
-                    _append_manifest({
-                        "run_id": run_id,
-                        "url": base_url,
-                        "kind": "program-base",
-                        "parent_url": None,
-                        "path": str(url_to_html_path(base_url).relative_to(DATA_DIR.parent)),
-                        "lang": lang,
-                        "title": title,
-                        "h1": h1,
-                        "subpages_present": [],  # filled in after subpage loop
-                        "linked_subjects": [],    # filled in after syllabus
-                        "linked_pdfs": [],
-                        "http_status": 200,
-                        "sha256": h,
-                        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    })
                     already_done.add(base_url)
+
+                    # Fix #3: Structural program detection
+                    if not is_program_page(resp.content):
+                        base_is_program = False
+                        non_program_count += 1
+                        log.info("Non-program page (skipping subpages): %s", base_url)
                 elif resp:
-                    _append_manifest({
-                        "run_id": run_id,
-                        "url": base_url,
-                        "kind": "program-base",
-                        "parent_url": None,
-                        "path": "",
-                        "lang": lang,
-                        "title": "",
-                        "h1": "",
-                        "subpages_present": [],
-                        "linked_subjects": [],
-                        "linked_pdfs": [],
-                        "http_status": resp.status_code,
-                        "sha256": "",
-                        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    })
+                    base_status = resp.status_code
+            else:
+                # Already fetched — check if it's a program from saved HTML
+                saved_path = url_to_html_path(base_url)
+                if saved_path.exists():
+                    saved_html = saved_path.read_bytes()
+                    base_is_program = is_program_page(saved_html)
+                    base_title, base_h1 = extract_title_and_h1(saved_html)
+                    base_hash = sha256(saved_html)
+                    base_status = 200
 
-            # Fetch subpages
-            for suffix in PROGRAM_SUBPAGES:
-                sub_url = f"{base_url}/{suffix}"
-                if sub_url in already_done:
-                    subpages_present.append(suffix)
-                    continue
+            # Only fetch subpages for confirmed program pages
+            if base_is_program and base_status == 200:
+                for suffix in PROGRAM_SUBPAGES:
+                    sub_url = f"{base_url}/{suffix}"
+                    if sub_url in already_done:
+                        subpages_present.append(suffix)
+                        continue
 
-                resp = fetch(session, sub_url, delay=delay_seconds)
-                if resp and resp.status_code == 200:
-                    changed, h = write_if_changed(url_to_html_path(sub_url), resp.content)
-                    title, h1 = extract_title_and_h1(resp.content)
-                    subpages_present.append(suffix)
+                    resp = fetch(session, sub_url, delay=delay_seconds)
+                    if resp and resp.status_code == 200:
+                        changed, h = write_if_changed(url_to_html_path(sub_url), resp.content)
+                        title, h1 = extract_title_and_h1(resp.content)
+                        subpages_present.append(suffix)
 
-                    # Extract subjects from syllabus
-                    if suffix == "syllabus":
-                        subjects = extract_subject_links(resp.content, lang)
-                        linked_subjects.extend(subjects)
-                        for subj_url in subjects:
-                            if subj_url not in subject_queue:
-                                subject_queue[subj_url] = []
-                            if base_url not in subject_queue[subj_url]:
-                                subject_queue[subj_url].append(base_url)
+                        # Extract subjects from syllabus (Fix #4: scoped to content container)
+                        if suffix == "syllabus":
+                            subjects = extract_subject_links(resp.content, lang)
+                            linked_subjects.extend(subjects)
+                            for subj_url in subjects:
+                                if subj_url not in subject_queue:
+                                    subject_queue[subj_url] = []
+                                if base_url not in subject_queue[subj_url]:
+                                    subject_queue[subj_url].append(base_url)
 
-                    linked_pdfs.extend(extract_pdf_links(resp.content))
+                        linked_pdfs.extend(extract_pdf_links(resp.content))
 
-                    _append_manifest({
-                        "run_id": run_id,
-                        "url": sub_url,
-                        "kind": "program-subpage",
-                        "parent_url": base_url,
-                        "path": str(url_to_html_path(sub_url).relative_to(DATA_DIR.parent)),
-                        "lang": lang,
-                        "title": title,
-                        "h1": h1,
-                        "subpages_present": [],
-                        "linked_subjects": [],
-                        "linked_pdfs": [],
-                        "http_status": 200,
-                        "sha256": h,
-                        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    })
-                    already_done.add(sub_url)
-                elif resp and resp.status_code == 404:
-                    log.debug("Subpage 404 (expected): %s", sub_url)
-                elif resp:
-                    log.warning("Subpage %d: %s", resp.status_code, sub_url)
+                        _append_manifest({
+                            "run_id": run_id,
+                            "url": sub_url,
+                            "kind": "program-subpage",
+                            "parent_url": base_url,
+                            "path": str(url_to_html_path(sub_url).relative_to(DATA_DIR.parent)),
+                            "lang": lang,
+                            "title": title,
+                            "h1": h1,
+                            "subpages_present": [],
+                            "linked_subjects": [],
+                            "linked_pdfs": [],
+                            "http_status": 200,
+                            "sha256": h,
+                            "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        })
+                        already_done.add(sub_url)
+                    elif resp and resp.status_code == 404:
+                        log.debug("Subpage 404 (expected): %s", sub_url)
+                    elif resp:
+                        log.warning("Subpage %d: %s", resp.status_code, sub_url)
+
+            # Fix #5: Write base record AFTER subpage loop with populated fields
+            kind = "program-base" if base_is_program else "non-program"
+            if base_status > 0:
+                _append_manifest({
+                    "run_id": run_id,
+                    "url": base_url,
+                    "kind": kind,
+                    "parent_url": None,
+                    "path": str(url_to_html_path(base_url).relative_to(DATA_DIR.parent)),
+                    "lang": lang,
+                    "title": base_title,
+                    "h1": base_h1,
+                    "subpages_present": subpages_present,
+                    "linked_subjects": linked_subjects,
+                    "linked_pdfs": linked_pdfs,
+                    "http_status": base_status,
+                    "sha256": base_hash,
+                    "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                })
 
             # Collect PDFs from all pages
             for pdf_url in linked_pdfs:
                 pdf_queue.add(pdf_url)
 
             progress.advance(task)
+
+    if non_program_count:
+        console.print(f"Skipped [yellow]{non_program_count}[/yellow] non-program pages (category/area pages)")
 
     # --- Phase 2: Subject pages ---
     subjects_to_fetch = [u for u in subject_queue if u not in already_done]
@@ -819,6 +939,7 @@ def verify() -> None:
 
     # Categorize
     bases = [r for r in run_records if r["kind"] == "program-base"]
+    non_programs = [r for r in run_records if r["kind"] == "non-program"]
     subpages = [r for r in run_records if r["kind"] == "program-subpage"]
     subjects = [r for r in run_records if r["kind"] == "subject"]
     pdfs = [r for r in run_records if r["kind"] == "ancillary-pdf"]
@@ -855,12 +976,19 @@ def verify() -> None:
 
     seed_urls = {s["url"] for s in seeds}
     base_fetched = {r["url"] for r in bases_ok}
-    missing_bases = seed_urls - base_fetched
+    non_program_urls = {r["url"] for r in non_programs}
+    # Seeds that are neither program-base nor non-program are truly missing
+    missing_bases = seed_urls - base_fetched - non_program_urls
     bases_complete = len(missing_bases) == 0
     table.add_row(
         "Program bases fetched",
         f"{'[green]' if bases_complete else '[red]'}{len(bases_ok)}/{len(seeds)}[/]",
-        "all seeds",
+        "all program seeds",
+    )
+    table.add_row(
+        "Non-program pages skipped",
+        str(len(non_programs)),
+        "",
     )
 
     coverage_ok = coverage_pct >= 80
