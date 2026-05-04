@@ -965,12 +965,15 @@ def verify() -> None:
         with open(SEED_PATH, encoding="utf-8") as f:
             seeds = json.load(f)
 
-    # Categorize
+    # Categorize from latest run (base records are always written)
     bases = [r for r in run_records if r["kind"] == "program-base"]
     non_programs = [r for r in run_records if r["kind"] == "non-program"]
-    subpages = [r for r in run_records if r["kind"] == "program-subpage"]
-    subjects = [r for r in run_records if r["kind"] == "subject"]
-    pdfs = [r for r in run_records if r["kind"] == "ancillary-pdf"]
+
+    # Subpages, subjects, and PDFs may be in earlier runs (resume doesn't
+    # re-write them). Count across ALL records for completeness checks.
+    all_subpages = [r for r in records if r["kind"] == "program-subpage" and r.get("http_status") == 200]
+    all_subjects = [r for r in records if r["kind"] == "subject" and r.get("http_status") == 200]
+    all_pdfs = [r for r in records if r["kind"] == "ancillary-pdf" and r.get("http_status") == 200]
 
     # Count bachelors in seeds
     bachelor_seeds = [s for s in seeds if s.get("kind_guess") == "bachelor"]
@@ -978,13 +981,19 @@ def verify() -> None:
     # Base page success
     bases_ok = [r for r in bases if r.get("http_status") == 200]
 
-    # Subpage coverage: for each base URL, how many subpages were fetched?
+    # Subpage coverage: use subpages_present from base records (populated
+    # during download even on resume) plus subpage records from any run.
     base_urls = {r["url"] for r in bases_ok}
-    subpage_counts: dict[str, int] = {u: 0 for u in base_urls}
-    for r in subpages:
+    subpage_counts: dict[str, int] = {}
+    for r in bases_ok:
+        # Primary source: the subpages_present field on the base record
+        subpage_counts[r["url"]] = len(r.get("subpages_present", []))
+    # Supplement with subpage records from any run (catches cases where
+    # subpages_present wasn't populated in older runs)
+    for r in all_subpages:
         parent = r.get("parent_url", "")
-        if parent in subpage_counts and r.get("http_status") == 200:
-            subpage_counts[parent] += 1
+        if parent in subpage_counts:
+            subpage_counts[parent] = max(subpage_counts[parent], 1)
     programs_with_3plus = sum(1 for c in subpage_counts.values() if c >= 3)
     coverage_pct = programs_with_3plus / len(subpage_counts) * 100 if subpage_counts else 0
 
@@ -1026,14 +1035,17 @@ def verify() -> None:
         ">= 80%",
     )
 
-    subject_ok = 300 <= len(subjects) <= 3000
+    # Deduplicate subjects by URL (may have records from multiple runs)
+    unique_subjects = {r["url"] for r in all_subjects}
+    subject_ok = 300 <= len(unique_subjects) <= 3000
     table.add_row(
         "Subject pages fetched",
-        f"{'[green]' if subject_ok else '[red]'}{len(subjects)}[/]",
+        f"{'[green]' if subject_ok else '[red]'}{len(unique_subjects)}[/]",
         "300-3,000",
     )
-    table.add_row("Ancillary PDFs", str(len(pdfs)), "")
-    table.add_row("Total records this run", str(len(run_records)), "")
+    unique_pdfs = {r["url"] for r in all_pdfs}
+    table.add_row("Ancillary PDFs", str(len(unique_pdfs)), "")
+    table.add_row("Total manifest records", str(len(records)), "")
 
     console.print()
     console.print(table)
