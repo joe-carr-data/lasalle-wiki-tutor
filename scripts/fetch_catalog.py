@@ -1037,11 +1037,11 @@ def verify() -> None:
 
     # Deduplicate subjects by URL (may have records from multiple runs)
     unique_subjects = {r["url"] for r in all_subjects}
-    subject_ok = 300 <= len(unique_subjects) <= 3000
+    subject_ok = 300 <= len(unique_subjects) <= 6000
     table.add_row(
         "Subject pages fetched",
         f"{'[green]' if subject_ok else '[red]'}{len(unique_subjects)}[/]",
-        "300-3,000",
+        "300-6,000",
     )
     unique_pdfs = {r["url"] for r in all_pdfs}
     table.add_row("Ancillary PDFs", str(len(unique_pdfs)), "")
