@@ -809,9 +809,8 @@ def download(
                         log.warning("Subpage %d: %s", resp.status_code, sub_url)
 
             # Fix #5: Write base record AFTER subpage loop with populated fields.
-            # Skip if nothing was fetched this run (fully resumed seed).
             kind = "program-base" if base_is_program else "non-program"
-            if base_status > 0 and did_any_fetch:
+            if base_status > 0:
                 _append_manifest({
                     "run_id": run_id,
                     "url": base_url,
