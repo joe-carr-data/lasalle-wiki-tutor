@@ -524,14 +524,44 @@ button { font: inherit; }
   border-color: var(--brand-300);
 }
 .tl-thought-text {
+  flex: 1;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--fg-2);
-  white-space: pre-wrap;
   /* Scope reflows so the rest of the page doesn't repaint on every
      delta, and keep the text antialiased while it grows. */
   contain: content;
   text-rendering: optimizeSpeed;
+}
+.tl-thought-text > :first-child { margin-top: 0; }
+.tl-thought-text > :last-child  { margin-bottom: 0; }
+.tl-thought-text p { margin: 0.25em 0; }
+.tl-thought-text strong { color: var(--fg-1); font-weight: 600; }
+.tl-thought-text em { color: var(--fg-2); }
+.tl-thought-text code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: rgba(91,168,218,0.12);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.tl-thought-text ul, .tl-thought-text ol {
+  margin: 0.25em 0;
+  padding-left: 1.2em;
+}
+.tl-thought-text li { margin: 0.1em 0; }
+
+.tl-thinking-icon {
+  color: var(--brand-500);
+  flex: none;
+}
+.tl-active .tl-thinking-icon {
+  color: var(--brand-700);
+  animation: tl-thinking-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tl-thinking-pulse {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.08); }
 }
 .tl-thought.tl-active .tl-thought-text { color: var(--brand-800); }
 

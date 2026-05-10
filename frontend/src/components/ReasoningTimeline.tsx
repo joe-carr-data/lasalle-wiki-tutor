@@ -1,5 +1,7 @@
-import { useDeferredValue, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2 } from "./icons";
+import { memo, useDeferredValue, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { BrainCircuit, ChevronDown, ChevronRight, Loader2 } from "./icons";
 import { ToolCallItem } from "./ToolCallItem";
 import { summarizeReasoning } from "../lib/format";
 import type { ReasoningStep, Turn } from "../state/useChatStream";
@@ -35,6 +37,7 @@ export function ReasoningTimeline({ turn, lang }: ReasoningTimelineProps) {
       <div className="reasoning">
         <div className="timeline">
           <div className="tl-step tl-active tl-prelude">
+            <BrainCircuit className="ico-sm tl-thinking-icon" />
             <Loader2 className="ico-sm tl-spin" />
             <span>{lang === "es" ? "Pensando…" : "Thinking…"}</span>
           </div>
@@ -56,6 +59,7 @@ export function ReasoningTimeline({ turn, lang }: ReasoningTimelineProps) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
+        <BrainCircuit className="ico-sm tl-thinking-icon" />
         {open ? (
           <ChevronDown className="ico-sm" />
         ) : (
@@ -93,8 +97,16 @@ function ThoughtItem({ step }: ThoughtItemProps) {
   const deferredText = useDeferredValue(step.text);
   return (
     <div className={`tl-step tl-thought ${stateClass}`}>
-      <span className="tl-dot" />
-      <span className="tl-thought-text">{deferredText || "…"}</span>
+      <BrainCircuit className="ico-sm tl-thinking-icon" />
+      <div className="tl-thought-text">
+        {deferredText ? <ThoughtMarkdown text={deferredText} /> : <span>…</span>}
+      </div>
     </div>
   );
 }
+
+const REMARK_PLUGINS = [remarkGfm];
+
+const ThoughtMarkdown = memo(function ThoughtMarkdown({ text }: { text: string }) {
+  return <ReactMarkdown remarkPlugins={REMARK_PLUGINS}>{text}</ReactMarkdown>;
+});

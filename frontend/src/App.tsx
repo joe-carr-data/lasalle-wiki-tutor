@@ -9,7 +9,9 @@ import { ReasoningTimeline } from "./components/ReasoningTimeline";
 import { MarkdownAnswer } from "./components/MarkdownAnswer";
 import { ConfirmDelete } from "./components/ConfirmDelete";
 import { JumpToLatest } from "./components/JumpToLatest";
-import { RotateCw } from "./components/icons";
+import { BrainCircuit, RotateCw } from "./components/icons";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useChatStream } from "./state/useChatStream";
 import { useConversations } from "./state/useConversations";
 import { useStickyScroll } from "./state/useStickyScroll";
@@ -63,7 +65,17 @@ export default function App() {
   function handleSend(text: string) {
     const detected = detectLang(text);
     if (detected !== lang) setLang(detected);
-    void send({ text, lang: detected, userId });
+    // Make sure the sidebar reflects this conversation immediately —
+    // useChatStream will mint a session id if we don't have one yet, but
+    // we need it client-side now to insert the placeholder row. So mint
+    // the id here, set it as the active session, and only then call send.
+    let sid = state.sessionId;
+    if (!sid) {
+      sid = crypto.randomUUID();
+      resetSession(sid);
+    }
+    conversations.optimisticInsert(sid, text, detected);
+    void send({ text, lang: detected, userId, sessionId: sid });
   }
 
   function handleNewChat() {
@@ -237,6 +249,11 @@ function BasicTurns({
   );
 }
 
+const REPLAY_REMARK_PLUGINS = [remarkGfm];
+function ReplayMarkdown({ text }: { text: string }) {
+  return <ReactMarkdown remarkPlugins={REPLAY_REMARK_PLUGINS}>{text}</ReactMarkdown>;
+}
+
 function RetryButton({
   turn,
   lang,
@@ -285,6 +302,7 @@ function ReplayThread({
               {t.has_trace && t.reasoning.length > 0 && (
                 <div className="reasoning open">
                   <div className="reasoning-chip" aria-disabled="true">
+                    <BrainCircuit className="ico-sm tl-thinking-icon" />
                     <span className="reasoning-chip-label">
                       {lang === "es" ? "Razonamiento guardado" : "Saved reasoning"}
                     </span>
@@ -293,8 +311,10 @@ function ReplayThread({
                     {t.reasoning.map((step, i) =>
                       step.kind === "thought" ? (
                         <div key={`th-${i}`} className="tl-step tl-thought tl-done">
-                          <span className="tl-dot" />
-                          <span className="tl-thought-text">{step.text}</span>
+                          <BrainCircuit className="ico-sm tl-thinking-icon" />
+                          <div className="tl-thought-text">
+                            <ReplayMarkdown text={step.text || "…"} />
+                          </div>
                         </div>
                       ) : (
                         <div key={`tool-${i}`} className="tl-step tl-tool-row tl-done">

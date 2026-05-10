@@ -381,6 +381,13 @@ export interface SendOptions {
   lang?: "en" | "es";
   reasoningEffort?: "low" | "medium" | "high";
   userId?: string;
+  /**
+   * Override the session id to use for this send. Normally we read it
+   * from the hook's internal ref, but the caller may need to mint and
+   * reuse one for optimistic UI (e.g. inserting the sidebar row before
+   * the SSE stream opens).
+   */
+  sessionId?: string;
 }
 
 export interface UseChatStream {
@@ -466,8 +473,14 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
   }, []);
 
   const send = useCallback(
-    async ({ text, lang = "en", reasoningEffort = "medium", userId }: SendOptions) => {
-      const sessionId = sessionIdRef.current ?? newId("sess");
+    async ({
+      text,
+      lang = "en",
+      reasoningEffort = "medium",
+      userId,
+      sessionId: overrideSessionId,
+    }: SendOptions) => {
+      const sessionId = overrideSessionId ?? sessionIdRef.current ?? newId("sess");
       sessionIdRef.current = sessionId;
       dispatch({ type: "session/start", sessionId });
 

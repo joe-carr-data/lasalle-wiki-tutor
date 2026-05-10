@@ -27,6 +27,16 @@ export interface UseConversations extends UseConversationsState {
   bumpToTop: (id: string, title?: string) => void;
   /** Handle a brand-new session id created in-memory (pre-first-turn). */
   setActive: (id: string) => void;
+  /**
+   * Insert a placeholder row at the top so the sidebar reflects the
+   * just-sent question instantly, before the server confirms. If the row
+   * already exists (subsequent turns) this just bumps updated_at.
+   */
+  optimisticInsert: (
+    id: string,
+    title: string,
+    lang: "en" | "es",
+  ) => void;
 }
 
 const EMPTY_STATE: UseConversationsState = {
@@ -185,6 +195,43 @@ export function useConversations(userId: string): UseConversations {
     setState((s) => (s.activeId === id ? s : { ...s, activeId: id }));
   }, []);
 
+  const optimisticInsert = useCallback(
+    (id: string, title: string, lang: "en" | "es") => {
+      setState((s) => {
+        const now = new Date().toISOString();
+        const idx = s.items.findIndex((c) => c.id === id);
+        if (idx !== -1) {
+          // Existing conversation — bump to top + refresh updated_at.
+          const existing = s.items[idx];
+          const rest = s.items.filter((_, i) => i !== idx);
+          return {
+            ...s,
+            items: [{ ...existing, updated_at: now }, ...rest],
+            activeId: id,
+          };
+        }
+        // New conversation — placeholder row (turn_count starts at 0,
+        // version 1; the server reconciles when ensure_meta returns).
+        return {
+          ...s,
+          items: [
+            {
+              id,
+              title: title.length > 60 ? title.slice(0, 59) + "…" : title,
+              lang,
+              version: 1,
+              turn_count: 0,
+              updated_at: now,
+            },
+            ...s.items,
+          ],
+          activeId: id,
+        };
+      });
+    },
+    [],
+  );
+
   return {
     ...state,
     refresh,
@@ -193,5 +240,6 @@ export function useConversations(userId: string): UseConversations {
     remove,
     bumpToTop,
     setActive,
+    optimisticInsert,
   };
 }

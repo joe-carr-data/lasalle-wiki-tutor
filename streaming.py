@@ -34,7 +34,12 @@ import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Optional
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 from pathlib import Path
 
@@ -163,9 +168,34 @@ async def stream_query(
     event_queue: asyncio.Queue[Any] = asyncio.Queue()
     direct: Optional[WikiTutorAgent] = None
 
+    # Tracks whether this is the very first turn for this conversation —
+    # decided BEFORE we touch Mongo so the title polisher only fires once.
+    is_first_turn = False
+
     try:
         # session.started
         yield format_sse(adapter.create_session_start())
+
+        # Surface this conversation in the sidebar IMMEDIATELY — before the
+        # agent runs — so the user sees their row appear the instant they
+        # hit send, not after the answer streams in. Idempotent: subsequent
+        # turns just bump updated_at.
+        if user_id:
+            try:
+                from core.conversations_store import get_store
+
+                store = get_store()
+                is_first_turn = (
+                    await store.meta.find_one({"_id": session_id})
+                ) is None
+                await store.ensure_meta(
+                    session_id=session_id,
+                    user_id=user_id,
+                    first_user_message=query,
+                    lang=lang or "en",
+                )
+            except Exception as exc:  # pragma: no cover
+                logger.warning("[wiki-sse] pre-turn ensure_meta failed: %s", exc)
 
         # Build agent (apply optional reasoning_effort override)
         cfg = WikiTutorAgentConfig()
@@ -289,28 +319,22 @@ async def stream_query(
             except Exception as exc:
                 logger.error("[wiki-sse] response.final error: %s", exc, exc_info=True)
 
-            # Surface this conversation in the sidebar. Idempotent — first
-            # turn inserts with a heuristic title, later turns just bump
-            # updated_at. Failures are non-fatal; chat still works.
-            #
-            # Same block writes the per-turn trace doc and (on the very
-            # first turn for this conversation) schedules the LLM title
-            # polisher in the background.
+            # Post-turn persistence: write the trace doc and (on the first
+            # turn for this conversation) schedule the LLM title polisher
+            # in the background. ensure_meta already ran pre-turn so the
+            # sidebar row was visible from the moment the user sent.
             if user_id:
                 try:
                     from core.conversations_store import get_store
 
                     store = get_store()
-                    is_first_turn = await store.meta.find_one(
-                        {"_id": session_id}
-                    ) is None
-                    await store.ensure_meta(
-                        session_id=session_id,
-                        user_id=user_id,
-                        first_user_message=query,
-                        lang=lang or "en",
-                    )
                     await recorder.flush(store)
+                    # Bump updated_at so the row jumps to the top of the
+                    # sidebar after the response lands.
+                    await store.meta.update_one(
+                        {"_id": session_id},
+                        {"$set": {"updated_at": _utc_now()}},
+                    )
                     if is_first_turn:
                         agent_text = "".join(answer_chunks)
                         schedule_polish(
