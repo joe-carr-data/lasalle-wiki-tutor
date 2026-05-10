@@ -53,11 +53,22 @@ if ! swapon --show | grep -q '^/swapfile'; then
 fi
 
 # ── 2. apt: base packages ────────────────────────────────────────────────
+# NOTE: `awscli` (v1) was dropped from Ubuntu 24.04 (noble) — install AWS
+# CLI v2 from the official installer below in step 2b.
 retry apt-get update -y
 retry apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg lsb-release \
-  git jq awscli unzip python3 python3-venv \
+  git jq unzip python3 python3-venv \
   debian-keyring debian-archive-keyring apt-transport-https
+
+# ── 2b. AWS CLI v2 (the box uses it for SSM Parameter Store reads) ───────
+if ! command -v aws >/dev/null 2>&1; then
+  TMP_AWS=$(mktemp -d)
+  retry bash -c "curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o '$TMP_AWS/awscliv2.zip'"
+  unzip -q "$TMP_AWS/awscliv2.zip" -d "$TMP_AWS"
+  "$TMP_AWS/aws/install" --update
+  rm -rf "$TMP_AWS"
+fi
 
 # ── 3. Docker + compose-plugin (official Docker apt repo) ────────────────
 install -m 0755 -d /etc/apt/keyrings
