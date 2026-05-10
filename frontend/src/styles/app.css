@@ -234,18 +234,62 @@ button { font: inherit; }
 
 /* ---------- Empty state ---------- */
 .empty {
-  max-width: 720px; margin: 0 auto;
-  padding: 80px 28px 24px;
+  max-width: 760px; margin: 0 auto;
+  padding: 28px 28px 24px;
   text-align: center;
 }
-.empty-mark {
-  width: 56px; height: 56px;
-  background: var(--brand-400); color: white;
-  font-weight: 700; letter-spacing: .04em; font-size: 14px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: var(--r-md);
-  margin: 0 auto 22px;
-  box-shadow: var(--shadow-brand);
+/* Hero band shown only on the empty state. Per the design system, the
+ * "Be Real, Be You" campaign image is allowed on marketing surfaces but
+ * never inside an active chat — this band disappears when the user
+ * sends their first message because the parent EmptyState unmounts. */
+.empty-hero {
+  position: relative;
+  height: 220px;
+  border-radius: var(--r-xl);
+  background-size: cover;
+  background-position: center 35%;
+  margin-bottom: 36px;
+  overflow: hidden;
+  box-shadow: var(--shadow-2);
+}
+.empty-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 88% 28%, rgba(91, 168, 218, 0.12), transparent 55%),
+    linear-gradient(180deg, rgba(14, 39, 64, 0.30) 0%, rgba(14, 39, 64, 0.55) 100%);
+  pointer-events: none;
+}
+.empty-hero-mark {
+  position: absolute;
+  top: 18px;
+  left: 22px;
+  width: 38px;
+  height: 38px;
+  background: var(--brand-400);
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-1);
+}
+.empty-hero-tagline {
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  font-family: var(--font-script);
+  font-weight: 700;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 0.9;
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.5px;
+  transform: rotate(-3deg);
+  user-select: none;
 }
 .empty-eyebrow {
   font-size: 12px; font-weight: 600;
@@ -933,49 +977,101 @@ button { font: inherit; }
   color: var(--fg-2);
 }
 
-/* ---------- Access gate ---------- */
-.gate-backdrop {
+/* ---------- Access gate ----------
+ *
+ * Per the design system: the "Be Real, Be You" image is full-bleed with
+ * a subtle dark overlay so the white serif and script tagline stay
+ * legible. The gate card sits as an opaque panel over the image — using
+ * paper-white tokens, not glass — to match the system's "no gradient,
+ * no fancy blur in the chat" rule. Glass blur is reserved for citation
+ * popovers per the README.
+ */
+.gate-stage {
   position: fixed;
   inset: 0;
-  background: linear-gradient(180deg, var(--bone) 0%, var(--paper) 100%);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 200;
+  overflow: hidden;
+}
+.gate-overlay {
+  position: absolute;
+  inset: 0;
+  /* Subtle dark wash plus a soft brand-tinted vignette from the right
+   * (matches the lighting of the original photo where the right wall
+   * lights are warm/red). Keeps the script tagline readable. */
+  background:
+    radial-gradient(ellipse at 88% 28%, rgba(91, 168, 218, 0.10), transparent 55%),
+    linear-gradient(180deg, rgba(14, 39, 64, 0.34) 0%, rgba(14, 39, 64, 0.62) 100%);
+  pointer-events: none;
+}
+.gate-tagline {
+  position: absolute;
+  right: clamp(24px, 5vw, 80px);
+  bottom: clamp(40px, 8vh, 96px);
+  font-family: var(--font-script);
+  font-weight: 700;
+  font-size: clamp(40px, 6vw, 76px);
+  line-height: 0.9;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  user-select: none;
+  transform: rotate(-3deg);
 }
 .gate-card {
-  width: min(420px, 100%);
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
   background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--r-xl);
   box-shadow: var(--shadow-3);
-  padding: 32px;
+  padding: 36px 32px 28px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
-.gate-icon {
+.gate-mark {
+  align-self: flex-start;
+  width: 44px;
+  height: 44px;
+  background: var(--brand-400);
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  border-radius: var(--r-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--r-md);
-  background: var(--bg-brand-soft);
-  color: var(--brand-700);
+  box-shadow: var(--shadow-1);
   margin-bottom: 4px;
 }
-.gate-icon svg { width: 22px; height: 22px; }
+.gate-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand-600);
+}
 .gate-title {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-3xl);
   font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--fg-1);
 }
 .gate-body {
-  margin: 0;
+  margin: 0 0 8px;
   font-size: 14px;
   line-height: 1.55;
   color: var(--fg-3);
@@ -983,7 +1079,7 @@ button { font: inherit; }
 .gate-input {
   font: inherit;
   font-size: 15px;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
   background: var(--paper);
@@ -1014,7 +1110,7 @@ button { font: inherit; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border: 0;
   border-radius: var(--r-md);
   background: var(--brand-600);
@@ -1023,11 +1119,22 @@ button { font: inherit; }
   font-size: 14px;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out);
+  margin-top: 4px;
 }
 .gate-submit:hover:not(:disabled) { background: var(--brand-700); }
+.gate-submit:active:not(:disabled) { transform: scale(0.98); }
 .gate-submit:disabled {
   background: var(--border-strong);
   cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .gate-tagline {
+    right: 18px;
+    bottom: 24px;
+    font-size: clamp(36px, 11vw, 56px);
+  }
+  .gate-card { padding: 28px 22px 20px; }
 }
 
 /* ---------- Mobile responsiveness ----------
@@ -1089,7 +1196,12 @@ button { font: inherit; }
   .thread-inner { padding: 0 14px; gap: 16px; }
   .composer-wrap { padding: 10px 14px 16px; }
   .composer { padding: 10px 12px 6px; }
-  .empty { padding: 28px 14px 16px; }
+  .empty { padding: 14px 14px 16px; }
+  .empty-hero { height: 160px; margin-bottom: 22px; }
+  .empty-hero-tagline { right: 14px; bottom: 12px; font-size: clamp(24px, 8vw, 36px); }
+  .empty-h { font-size: 30px !important; }
+  .empty-sub { font-size: 15px !important; }
+  .starter-grid { grid-template-columns: 1fr !important; }
 
   /* Bubble widths and message layout — keep text readable on narrow screens. */
   .msg-user .msg-body { max-width: 92%; }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Lock } from "./icons";
+import { Loader2 } from "./icons";
 import { setStoredToken, validateToken } from "../lib/auth";
+import heroImage from "../assets/be-real-be-you.jpg";
 
 interface GateProps {
   /** Called once the token validates. The bare token is also stored. */
@@ -11,8 +12,9 @@ interface GateProps {
 
 const COPY = {
   en: {
-    title: "Wiki Tutor — restricted access",
-    body: "This evaluation environment is private. Please paste the access token you were given.",
+    eyebrow: "LaSalle Campus Barcelona",
+    title: "Wiki Tutor",
+    body: "An AI study advisor grounded in the LaSalle catalog. This evaluation environment is private — paste the access token you were given.",
     placeholder: "Access token",
     submit: "Enter",
     submitting: "Checking…",
@@ -22,8 +24,9 @@ const COPY = {
     empty: "Paste the token to continue.",
   },
   es: {
-    title: "Wiki Tutor — acceso restringido",
-    body: "Este entorno de evaluación es privado. Pega el token de acceso que te facilitamos.",
+    eyebrow: "LaSalle Campus Barcelona",
+    title: "Wiki Tutor",
+    body: "Un asesor académico de IA basado en el catálogo de LaSalle. Este entorno de evaluación es privado — pega el token de acceso que te facilitamos.",
     placeholder: "Token de acceso",
     submit: "Entrar",
     submitting: "Comprobando…",
@@ -72,13 +75,23 @@ export function Gate({ onAuthenticated, lang = "en" }: GateProps) {
   }
 
   return (
-    <div className="gate-backdrop">
+    <div className="gate-stage" style={{ backgroundImage: `url(${heroImage})` }}>
+      <div className="gate-overlay" aria-hidden="true" />
+      {/* "Be Real, Be You" lockup — the canonical campaign mark from the
+          design system. Caveat substitutes for the bespoke handwritten
+          face per the README's font-substitutions table. */}
+      <div className="gate-tagline" aria-hidden="true">
+        Be real,
+        <br />
+        be you.
+      </div>
+
       <form className="gate-card" onSubmit={submit}>
-        <div className="gate-icon" aria-hidden="true">
-          <Lock />
-        </div>
+        <div className="gate-mark" aria-hidden="true">LS</div>
+        <div className="gate-eyebrow">{t.eyebrow}</div>
         <h1 className="gate-title">{t.title}</h1>
         <p className="gate-body">{t.body}</p>
+
         <input
           ref={inputRef}
           type="password"
