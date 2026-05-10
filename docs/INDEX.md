@@ -7,7 +7,7 @@ topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **2 – Bulk download** (script implemented, ready to run)
+Phase: **2 – Bulk download** (complete, all checks passed)
 Next phase: **3 – HTML to markdown conversion** (not started)
 
 ## Target
