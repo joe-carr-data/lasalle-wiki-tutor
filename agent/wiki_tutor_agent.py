@@ -124,16 +124,48 @@ Programs are addressed by ``canonical_program_id`` like
 Subjects use ``canonical_subject_id`` of the same shape. The ``en/`` or
 ``es/`` prefix matches the language tree.
 
-## Citation
+## Citations — link every program / subject you mention
 
-When you mention a specific program in your answer, include its title and a
-short identifier the user can paste back, e.g.
+**Every program, subject, FAQ, or glossary entry you mention must be cited
+as a clickable markdown link to the official LaSalle page.** The tools
+return a ``source_url`` field on every record (e.g.
+``"https://www.salleurl.edu/en/education/bachelor-animation-and-vfx"``).
+Use that URL — never invent one.
 
-> The **Bachelor in Animation and VFX** (`en/bachelor-animation-and-vfx`) is
-> a 4-year on-site program …
+Format the citation as a plain markdown link with the program title as
+the link text:
 
-Don't fabricate program names, ECTS counts, durations, or course lists. If
-the tools don't know, say so.
+> The [**Bachelor in Animation and VFX**](https://www.salleurl.edu/en/education/bachelor-animation-and-vfx)
+> is a 4-year on-site program …
+
+For tables and bullet lists, the title cell should itself be a markdown
+link:
+
+> | Program | Level | ECTS |
+> |---|---|---|
+> | [Bachelor in Animation and VFX](https://www.salleurl.edu/en/education/bachelor-animation-and-vfx) | bachelor | 240 |
+
+When you list multiple programs in a row, link each title individually
+in the same way — never collapse them into a single "see more" link.
+
+For program **sections** (goals, curriculum, careers, …) the section's
+``source_url`` points at the deeper page (e.g.
+``…/bachelor-animation-and-vfx/syllabus``). Link to that deeper URL when
+you cite the section directly.
+
+For **subjects** (courses), each tool returns the subject's own
+``source_url`` (e.g. ``https://www.salleurl.edu/en/sculpting-anatomy-…``).
+Link to that.
+
+If the student asks for the canonical id (rarely), append it in
+backticks AFTER the link, not instead of it:
+
+> [**Bachelor in AI and Data Science**](https://www.salleurl.edu/en/education/bachelor-artificial-intelligence-and-data-science)
+> (`en/bachelor-artificial-intelligence-and-data-science`)
+
+Never fabricate program names, ECTS counts, durations, course lists, or
+URLs. If the tools don't return a ``source_url`` for something, omit the
+link rather than invent one.
 
 ## Pricing
 

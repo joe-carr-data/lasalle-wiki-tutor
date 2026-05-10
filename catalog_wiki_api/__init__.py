@@ -338,13 +338,23 @@ def list_languages() -> list[LanguageSummary]:
 
 def _read_section(canonical_program_id: str, section: str) -> tuple[str, str]:
     """Return (title, body_markdown) for a program's section file."""
+    fm, body = _read_section_with_meta(canonical_program_id, section)
+    title = fm.get("title", "")
+    return title, body
+
+
+def _read_section_with_meta(canonical_program_id: str, section: str) -> tuple[dict, str]:
+    """Return (frontmatter_dict, body_markdown) for a program's section file.
+
+    The section file's frontmatter carries its own ``source_url`` which
+    points at the deeper page on salleurl.edu (e.g. ``…/careers``,
+    ``…/syllabus``) — different from the program's base URL.
+    """
     path = store.program_section_file(canonical_program_id, section)
     if not path.exists():
-        return "", ""
+        return {}, ""
     fm, body = store.read_markdown(path)
-    title = fm.get("title", "")
-    # Strip the heading the renderer added ("# {title}\n## Section\n...")
-    return title, body.strip()
+    return fm, body.strip()
 
 
 def get_program(program_id: str, include_sections: bool = False) -> ProgramDetail:
@@ -387,21 +397,24 @@ def get_program_section(program_id: str, section: SectionKey) -> SectionContent:
             "invalid_filter",
             f"Unknown section {section!r}; expected one of {sorted(valid)}",
         )
-    title, body = _read_section(program_id, section)
+    section_fm, body = _read_section_with_meta(program_id, section)
     if not body:
         raise CatalogApiError(
             "not_found",
             f"Section {section!r} not available for {program_id}",
         )
     lang = program_id.split("/", 1)[0]
+    # Section files carry their own source_url pointing at the deeper page
+    # (e.g. .../careers, .../syllabus). Fall back to program base URL.
+    section_source_url = section_fm.get("source_url") or rec.get("source_url", "")
     return {
         "canonical_program_id": program_id,
         "section": section,
-        "title": title or rec.get("title", ""),
+        "title": section_fm.get("title") or rec.get("title", ""),
         "body_markdown": body,
         "lang": lang,
-        "source_url": rec.get("source_url", ""),
-        "last_built_at": rec.get("last_built_at", ""),
+        "source_url": section_source_url,
+        "last_built_at": section_fm.get("last_built_at") or rec.get("last_built_at", ""),
     }
 
 
