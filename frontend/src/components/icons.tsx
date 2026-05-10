@@ -15,6 +15,7 @@ export {
   ListChecks,
   Loader2,
   Lock,
+  LogOut,
   MessageSquare,
   Pencil,
   Plus,

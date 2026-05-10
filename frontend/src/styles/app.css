@@ -911,6 +911,28 @@ button { font: inherit; }
 .ico-sm { width: 14px; height: 14px; }
 .ico { width: 18px; height: 18px; }
 
+/* Sidebar sign-out — quiet by default, brand-tinted on hover. */
+.sb-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.sb-logout:hover {
+  background: var(--bg-3);
+  color: var(--fg-2);
+}
+
 /* ---------- Access gate ---------- */
 .gate-backdrop {
   position: fixed;

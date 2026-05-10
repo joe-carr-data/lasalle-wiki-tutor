@@ -1,5 +1,6 @@
-import { Plus } from "./icons";
+import { LogOut, Plus } from "./icons";
 import { ConversationRow } from "./ConversationRow";
+import { clearStoredToken } from "../lib/auth";
 
 export interface ConversationListItem {
   id: string;
@@ -93,6 +94,17 @@ export function Sidebar({
           Admissions →
         </a>
       </div>
+
+      <button
+        type="button"
+        className="sb-logout"
+        onClick={clearStoredToken}
+        aria-label={lang === "es" ? "Cerrar sesión" : "Sign out"}
+        title={lang === "es" ? "Cerrar sesión" : "Sign out"}
+      >
+        <LogOut className="ico-sm" />
+        <span>{lang === "es" ? "Cerrar sesión" : "Sign out"}</span>
+      </button>
     </aside>
   );
 }
