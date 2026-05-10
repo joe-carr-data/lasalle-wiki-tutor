@@ -228,3 +228,52 @@ We hit "BLOCKED: Cookie/query string data" when our exploration JS
 returned `a.href` — full URLs sometimes include query strings that
 look like cookie data to the safety filter. Workaround: return
 `new URL(a.href).pathname` instead of `a.href` from JS evaluations.
+
+## Phase 5: SSE parsers must handle CRLF + multi-line data:
+
+The first cut of `streamQuery` split on `\n` only and treated `data:`
+as a single-line field. Both assumptions fail in production. Some
+proxies normalize line endings to CRLF; the SSE spec allows multiple
+consecutive `data:` lines for one event (joined with `\n`). The fix is
+mechanical (normalize CRLF, accumulate `data:` chunks, flush a trailing
+buffered event on stream end) but easy to miss. Also: never auto-reconnect
+after the first `final_response.delta` — replaying tokens produces
+garbled output. Reconnect only on transient network failure pre-deltas.
+
+## Phase 5: agno does not always persist user_id on its session doc
+
+Building the conversation list from `wiki_tutor_agent_sessions` with a
+`{user_id: ...}` match returned 0 rows even after a successful turn.
+Agno persists most things on the run document but its top-level
+`session.user_id` was null. We rebuilt the aggregation to drive from
+the meta side-car (which **we** write, with `user_id` always present)
+and look up the agno session for `runs[]` count. Same fix applied to
+`get_full` — meta is the authority on ownership; agno is only consulted
+for transcript content.
+
+## Phase 5: trace docs and agno runs live in parallel id namespaces
+
+Our `TurnTraceRecorder` keys docs by an internal run_id that does NOT
+match agno's `runs[].run_id`. Trying to join them with a dict by id
+produced empty `reasoning` arrays on replay. Fix: zip both lists by
+ordinal (sorted by `started_at`) — the Nth completed turn's trace
+matches the Nth agno run. Both are produced sequentially per turn so
+ordering is reliable.
+
+## Phase 5: GZipMiddleware + SSE just works (because of minimum_size)
+
+We worried that adding `GZipMiddleware` to FastAPI would break SSE.
+It doesn't, **but only** because each SSE event chunk is well under
+the `minimum_size=1024` threshold. starlette's middleware checks the
+first chunk; if it's small, the entire stream passes through
+uncompressed. JSON / JS bundles still get compressed normally
+(379 KB → 115 KB on the wire). If we ever start emitting >1 KB SSE
+chunks, the streaming would suddenly break — flag for future self.
+
+## Phase 5: the local docker mongo runs without auth
+
+`.env`'s default `MONGO_URL=mongodb://admin:password@localhost:27017`
+fails SCRAM auth against the unauthenticated docker container. Switch
+to `mongodb://localhost:27017` for local dev (already updated in both
+`.env` and `.env.example`). Production Atlas still uses the
+`mongodb+srv://...` form via `utils/mongo_connection.py`.

@@ -7,7 +7,8 @@ topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **4 – Student-facing AI assistant** (agent integration complete; smoke-tested end-to-end)
+Phase: **5 – Frontend chat UI** (Vite + React TS bundle served by FastAPI;
+sidebar history, replay with reasoning, LLM-polished titles, prod hardening)
 Next phase: **demo deployment to t3.micro** (out of plan scope)
 
 ## Target
@@ -27,6 +28,7 @@ CMS: Drupal
 | 03 | [`03-storage-layout.md`](./03-storage-layout.md) | On-disk layout for raw HTML, PDFs, manifests | Current |
 | 04 | [`04-knowledge-base-map.md`](./04-knowledge-base-map.md) | What's in the corpus, what's useful for students, content tiers | Current |
 | 05 | [`05-wiki-architecture.md`](./05-wiki-architecture.md) | Phase 3 wiki layout, build pipeline, and read-only API (`catalog_wiki_api` v1) | Current |
+| 06 | [`06-frontend.md`](./06-frontend.md) | Phase 5 frontend chat UI, conversations REST API, prod hardening | Current |
 | –  | [`aha.md`](./aha.md) | Short list of "aha" moments / lessons learned. Read this first when resuming work. | Current |
 
 ## Archive
