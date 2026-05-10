@@ -28,6 +28,8 @@ export function useStickyScroll<T extends HTMLElement>(opts: {
 }) {
   const ref = useRef<T | null>(null);
   const stickyRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
+  const programmaticTimerRef = useRef<number | null>(null);
   const [atBottom, setAtBottom] = useState(true);
 
   const measureDistance = useCallback((): number => {
@@ -36,19 +38,42 @@ export function useStickyScroll<T extends HTMLElement>(opts: {
     return el.scrollHeight - el.scrollTop - el.clientHeight;
   }, []);
 
-  // Re-arm sticky when the user (or scrollToBottom) lands at the bottom.
-  // Don't release sticky here — only user-input handlers do that.
+  const beginProgrammaticScroll = useCallback((ms = 0) => {
+    programmaticScrollRef.current = true;
+    if (programmaticTimerRef.current !== null) {
+      window.clearTimeout(programmaticTimerRef.current);
+      programmaticTimerRef.current = null;
+    }
+    if (ms <= 0) {
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+      });
+      return;
+    }
+    programmaticTimerRef.current = window.setTimeout(() => {
+      programmaticScrollRef.current = false;
+      programmaticTimerRef.current = null;
+    }, ms);
+  }, []);
+
+  // Bottom re-arms sticky. Leaving bottom by user scroll disarms sticky.
+  // This is the key invariant that prevents yank-back races.
   const onScroll = useCallback(() => {
     const distance = measureDistance();
     // 4 px tolerance for sub-pixel rounding.
     const isAtBottom = distance <= 4;
     setAtBottom(isAtBottom);
-    if (isAtBottom) stickyRef.current = true;
+    if (isAtBottom) {
+      stickyRef.current = true;
+      // If a smooth programmatic scroll just reached bottom, we can stop
+      // suppressing user-intent detection now.
+      programmaticScrollRef.current = false;
+    } else if (!programmaticScrollRef.current) {
+      stickyRef.current = false;
+    }
   }, [measureDistance]);
 
-  // Any user gesture that scrolls the thread away from the bottom
-  // releases sticky immediately. We don't try to predict where the
-  // gesture will end — even a small upward intent is enough.
+  // Keep explicit user-intent handling for immediate release on wheel/key/touch.
   const releaseOnUpward = useCallback(() => {
     // If the user is already off the bottom, they clearly want to read
     // earlier content; release sticky so subsequent deltas don't yank.
@@ -97,6 +122,9 @@ export function useStickyScroll<T extends HTMLElement>(opts: {
     onScroll();
 
     return () => {
+      if (programmaticTimerRef.current !== null) {
+        window.clearTimeout(programmaticTimerRef.current);
+      }
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("scroll", onScroll);
@@ -109,16 +137,18 @@ export function useStickyScroll<T extends HTMLElement>(opts: {
     const el = ref.current;
     if (!el) return;
     if (!stickyRef.current) return;
+    beginProgrammaticScroll();
     el.scrollTop = el.scrollHeight;
-  }, [opts.contentTick]);
+  }, [beginProgrammaticScroll, opts.contentTick]);
 
   const scrollToBottom = useCallback((smooth = true) => {
     const el = ref.current;
     if (!el) return;
+    beginProgrammaticScroll(smooth ? 700 : 0);
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
     stickyRef.current = true;
     setAtBottom(true);
-  }, []);
+  }, [beginProgrammaticScroll]);
 
   return { ref, atBottom, scrollToBottom };
 }
