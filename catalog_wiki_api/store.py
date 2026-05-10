@@ -78,15 +78,29 @@ def _catalog_index(lang: str) -> dict[str, dict[str, Any]]:
 
 @lru_cache(maxsize=4)
 def _subjects_index(lang: str) -> dict[str, dict[str, Any]]:
-    """Map canonical_subject_id → frontmatter dict for one language."""
+    """Map canonical_subject_id → frontmatter dict for one language.
+
+    Skips:
+    - ``README.md``
+    - Hidden / dotfile entries starting with ``.`` (this includes macOS
+      AppleDouble sidecars named ``._something.md`` that the BSD ``tar``
+      bundles by default when packing a wiki tarball on macOS — they are
+      not valid UTF-8 markdown and used to crash the entire index.)
+    """
     by_id: dict[str, dict[str, Any]] = {}
     base = _WIKI_DIR / lang / "subjects"
     if not base.exists():
         return by_id
     for f in sorted(base.glob("*.md")):
-        if f.name == "README.md":
+        if f.name == "README.md" or f.name.startswith("."):
             continue
-        fm, _ = read_markdown(f)
+        try:
+            fm, _ = read_markdown(f)
+        except UnicodeDecodeError:
+            # Defensive: any file that slips past the dotfile filter and
+            # isn't UTF-8 (sidecar files, partial downloads) is skipped
+            # rather than crashing every subject lookup in the language.
+            continue
         sid = fm.get("canonical_subject_id")
         if sid:
             by_id[sid] = fm

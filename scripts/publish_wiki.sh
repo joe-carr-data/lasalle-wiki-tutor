@@ -40,7 +40,13 @@ fi
 mkdir -p .cache
 TARBALL=".cache/$ASSET"
 echo "→ Packing wiki/ ($MD_COUNT markdown files + sidecars) → $TARBALL"
-tar -czf "$TARBALL" wiki
+# COPYFILE_DISABLE prevents macOS BSD tar from bundling AppleDouble
+# sidecar files (._foo.md, ._foo/, etc.) alongside the real files. Those
+# sidecars carry HFS+/APFS extended attributes and resource forks, are
+# NOT valid UTF-8, and used to crash subject lookups on the deploy box.
+# --exclude='._*' is a belt-and-braces fallback if a future macOS
+# version or third-party tar respects COPYFILE_DISABLE differently.
+COPYFILE_DISABLE=1 tar --exclude='._*' -czf "$TARBALL" wiki
 
 SIZE=$(du -h "$TARBALL" | cut -f1)
 echo "  archive size: $SIZE"
