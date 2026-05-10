@@ -1,11 +1,8 @@
-/* Phase 5 scaffold — global resets only.
-   Real design-system tokens land in src/styles/tokens.css in Task #55. */
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; }
+/* Bootstrap stylesheet — order matters: tokens first, then component styles. */
+@import "./styles/tokens.css";
+@import "./styles/app.css";
+
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: #111827;
-  background: #ffffff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

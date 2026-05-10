@@ -1,52 +1,114 @@
-import { useEffect, useState } from 'react';
-import './App.css';
+import { useState } from "react";
+import { Shell } from "./components/Shell";
+import { Sidebar } from "./components/Sidebar";
+import { TopBar } from "./components/TopBar";
+import { Composer } from "./components/Composer";
+import { EmptyState } from "./components/EmptyState";
+import { Avatar } from "./components/Avatar";
+import { useChatStream } from "./state/useChatStream";
+import type { ConversationListItem } from "./components/Sidebar";
 
-// Minimal scaffold for Phase 5 — verifies that the React app boots and
-// that the Vite dev proxy (or production StaticFiles mount) can reach
-// the FastAPI backend's /health endpoint. Real chat UI replaces this in
-// the next slice (Sidebar + Composer + ReasoningTimeline + …).
-
-type Health = { status: string; assistant: string };
+// Lang detection heuristic per plan: Spanish chars + a couple of stopwords.
+const ES_HINTS = /[áéíóúñ¿¡]|\b(qué|cómo|cuál|cuáles|para|grado|máster)\b/i;
+function detectLang(text: string): "en" | "es" {
+  return ES_HINTS.test(text) ? "es" : "en";
+}
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { state, send, cancel } = useChatStream();
+  const [lang, setLang] = useState<"en" | "es">("en");
 
-  useEffect(() => {
-    fetch('/health')
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return (await r.json()) as Health;
-      })
-      .then(setHealth)
-      .catch((e) => setError(String(e)));
-  }, []);
+  // Conversation list is a static placeholder until Task #59/#60 wire the
+  // real Mongo-backed history. Empty array shows the "no conversations" hint.
+  const conversations: ConversationListItem[] = [];
+
+  function handleSend(text: string) {
+    const detected = detectLang(text);
+    if (detected !== lang) setLang(detected);
+    void send({ text, lang: detected });
+  }
+
+  const showEmpty = state.turns.length === 0;
 
   return (
-    <main style={{ padding: '32px', fontFamily: 'system-ui, sans-serif' }}>
-      <h1>LaSalle Wiki Tutor — frontend scaffold</h1>
-      <p>
-        Phase 5 is alive. The chat UI lands here in subsequent slices.
-      </p>
-      <h2>Backend connectivity</h2>
-      {error && (
-        <p style={{ color: 'crimson' }}>
-          /health failed: {error} (start the FastAPI backend with{' '}
-          <code>uv run uvicorn streaming:app --port 8000</code>)
-        </p>
-      )}
-      {health && (
-        <pre
-          style={{
-            background: '#f1f4f8',
-            padding: '12px 16px',
-            borderRadius: 8,
-            display: 'inline-block',
+    <Shell
+      sidebar={
+        <Sidebar
+          conversations={conversations}
+          activeId={state.sessionId}
+          lang={lang}
+          onSelect={() => {
+            /* hooked up in Task #60 */
           }}
-        >
-          {JSON.stringify(health, null, 2)}
-        </pre>
-      )}
-    </main>
+          onNewChat={() => window.location.reload()}
+          onLangChange={setLang}
+        />
+      }
+      topBar={<TopBar title="Wiki Tutor" lang={lang} />}
+      thread={
+        showEmpty ? (
+          <EmptyState lang={lang} onPick={handleSend} />
+        ) : (
+          <BasicTurns turns={state.turns} />
+        )
+      }
+      composer={
+        <Composer
+          lang={lang}
+          busy={state.isStreaming}
+          onSend={handleSend}
+          onCancel={cancel}
+        />
+      }
+    />
+  );
+}
+
+// Minimal turn renderer until Task #56/#57 add the real ReasoningTimeline +
+// MarkdownAnswer. This proves the streaming pipeline end-to-end.
+function BasicTurns({ turns }: { turns: ReturnType<typeof useChatStream>["state"]["turns"] }) {
+  return (
+    <>
+      {turns.map((t) => (
+        <div key={t.id} className="turn">
+          <div className="msg msg-user">
+            <div className="msg-body">
+              <div className="bubble bubble-user">{t.user.text}</div>
+            </div>
+            <Avatar kind="user" />
+          </div>
+          <div className="msg msg-agent">
+            <Avatar kind="agent" />
+            <div className="msg-body">
+              {t.reasoning.length > 0 && (
+                <div className="timeline">
+                  {t.reasoning.map((s) => (
+                    <div
+                      key={s.id}
+                      className={`tl-step tl-${s.status === "active" ? "active" : "done"}`}
+                    >
+                      <span className="tl-dot" />
+                      {s.kind === "tool" ? (
+                        <>
+                          <span className="tl-tool">{s.name}</span>
+                          {s.argsDisplay && <span className="tl-arg">· {s.argsDisplay}</span>}
+                          {s.durationDisplay && <span className="tl-meta">{s.durationDisplay}</span>}
+                        </>
+                      ) : (
+                        <span>{s.text || "Thinking…"}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="bubble bubble-agent">
+                {t.answer.markdown ||
+                  (t.status === "streaming" ? "…" : t.error || "")}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </>
   );
 }

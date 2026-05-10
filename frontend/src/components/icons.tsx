@@ -1,0 +1,27 @@
+// Centralized lucide-react re-exports so the rest of the app imports a small
+// stable surface. Add icons here as components need them — keeps tree-shaking
+// boundaries explicit.
+export {
+  ArrowUp,
+  BookOpen,
+  BrainCircuit,
+  Briefcase,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  Compass,
+  GitCompareArrows,
+  ListChecks,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
+  RotateCw,
+  Search,
+  Send,
+  Settings,
+  Share2,
+  Sparkles,
+  Square,
+  Trash2,
+} from "lucide-react";

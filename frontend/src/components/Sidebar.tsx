@@ -1,0 +1,88 @@
+import { MessageSquare, Plus } from "./icons";
+
+export interface ConversationListItem {
+  id: string;
+  title: string;
+}
+
+interface SidebarProps {
+  conversations: ConversationListItem[];
+  activeId: string | null;
+  lang: "en" | "es";
+  onSelect: (id: string) => void;
+  onNewChat: () => void;
+  onLangChange: (lang: "en" | "es") => void;
+}
+
+export function Sidebar({
+  conversations,
+  activeId,
+  lang,
+  onSelect,
+  onNewChat,
+  onLangChange,
+}: SidebarProps) {
+  return (
+    <aside className="sidebar">
+      <div className="sb-brand">
+        <div className="sb-mark">LS</div>
+        <div className="sb-stack">
+          <div className="sb-title">Wiki Tutor</div>
+          <div className="sb-sub">La Salle BCN · URL</div>
+        </div>
+      </div>
+
+      <button className="sb-new" onClick={onNewChat}>
+        <Plus className="ico-sm" /> New chat
+      </button>
+
+      <div className="sb-section">Conversations</div>
+      <div className="sb-list">
+        {conversations.length === 0 && (
+          <div className="sb-empty">
+            {lang === "es"
+              ? "Sin conversaciones todavía."
+              : "No conversations yet."}
+          </div>
+        )}
+        {conversations.map((c) => (
+          <button
+            key={c.id}
+            className={`sb-item${c.id === activeId ? " active" : ""}`}
+            onClick={() => onSelect(c.id)}
+          >
+            <MessageSquare className="ico-sm" />
+            <span className="sb-item-title">{c.title}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="sb-foot">
+        <div className="lang-toggle" role="group" aria-label="Language">
+          <button
+            className={lang === "en" ? "on" : ""}
+            aria-pressed={lang === "en"}
+            onClick={() => onLangChange("en")}
+          >
+            EN
+          </button>
+          <button
+            className={lang === "es" ? "on" : ""}
+            aria-pressed={lang === "es"}
+            onClick={() => onLangChange("es")}
+          >
+            ES
+          </button>
+        </div>
+        <a
+          className="sb-link"
+          href="https://www.salleurl.edu/en/admissions"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Admissions →
+        </a>
+      </div>
+    </aside>
+  );
+}
