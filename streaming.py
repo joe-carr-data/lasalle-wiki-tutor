@@ -38,11 +38,13 @@ from typing import Any, AsyncGenerator, Optional
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, field_validator
+from starlette.responses import Response
 
 from agent import WikiTutorAgent, WikiTutorAgentConfig
 from config.settings import PROJECT_SETTINGS
@@ -368,6 +370,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Compress text responses on the fly. SSE responses are excluded by
+# starlette's GZipMiddleware (it skips streaming responses with
+# `text/event-stream`).
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(conversations_router)
 
 
@@ -434,27 +440,75 @@ _FRONTEND_DIST = Path(__file__).resolve().parent / "frontend" / "dist"
 _FRONTEND_INDEX = _FRONTEND_DIST / "index.html"
 _FRONTEND_ASSETS = _FRONTEND_DIST / "assets"
 
+# Baseline Content-Security-Policy. We deliberately allow inline styles
+# because some component libraries inject style tags; if we tighten this
+# later, switch to nonces.
+_CSP = (
+    "default-src 'self'; "
+    "connect-src 'self'; "
+    "img-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "script-src 'self'; "
+    "frame-ancestors 'none'"
+)
+_INDEX_HEADERS = {
+    "Cache-Control": "no-cache, must-revalidate",
+    "Content-Security-Policy": _CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+}
+
 
 def _index_response() -> FileResponse:
     """Serve the SPA shell with no-cache so redeploys roll out cleanly."""
     return FileResponse(
         _FRONTEND_INDEX,
         media_type="text/html",
-        headers={"Cache-Control": "no-cache, must-revalidate"},
+        headers=_INDEX_HEADERS,
     )
 
 
+class _ImmutableStaticFiles(StaticFiles):
+    """StaticFiles subclass that pins hashed assets to a 1-year cache.
+
+    Vite content-addresses chunks under ``/assets/*``, so each filename is
+    unique to its content. ``immutable`` tells well-behaved caches to never
+    revalidate, which removes a round-trip on every page load.
+    """
+
+    async def get_response(self, path: str, scope) -> Response:  # type: ignore[override]
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers.setdefault(
+                "Cache-Control", "public, max-age=31536000, immutable"
+            )
+        return response
+
+
 if _FRONTEND_ASSETS.exists():
-    # Hashed assets — content-addressed by Vite, safe to cache forever.
     app.mount(
         "/assets",
-        StaticFiles(directory=_FRONTEND_ASSETS),
+        _ImmutableStaticFiles(directory=_FRONTEND_ASSETS),
         name="frontend-assets",
     )
 
 if _FRONTEND_INDEX.exists():
     @app.get("/", include_in_schema=False)
     async def frontend_root() -> FileResponse:  # type: ignore[no-redef]
+        return _index_response()
+
+    # SPA fallback: any GET that isn't an API call and isn't a real static
+    # file under /assets/* returns the bundled index.html. This keeps deep
+    # links like /c/<id> alive across hard reloads.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str, request: Request) -> Response:
+        # Never shadow API or health routes — they have their own handlers
+        # that match before this catch-all because FastAPI evaluates routes
+        # in registration order. This guard is belt-and-braces for nested
+        # paths Starlette might still route here.
+        if full_path.startswith(("api/", "health", "assets/")):
+            raise HTTPException(status_code=404, detail="not found")
         return _index_response()
 else:
     @app.get("/", include_in_schema=False)
