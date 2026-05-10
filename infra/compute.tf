@@ -44,9 +44,14 @@ resource "aws_instance" "wiki_tutor" {
   // Force IMDSv2 — the SSM Agent and any AWS SDK call from inside the box
   // negotiates v2 transparently, but legacy v1 metadata access is a known
   // SSRF amplifier. AWS recommends required, not optional.
+  //
+  // hop_limit = 1 means containers (which sit one hop away across docker0)
+  // cannot reach IMDS — that's the security posture we want. The native
+  // uvicorn process and the host-level SSM agent are still 0 hops away
+  // from the metadata service, so they keep working.
   metadata_options {
     http_tokens                 = "required"
-    http_put_response_hop_limit = 2
+    http_put_response_hop_limit = 1
     http_endpoint               = "enabled"
   }
 

@@ -16,13 +16,18 @@ Operations happen over **SSM Session Manager** — no port 22, no key pair. Secr
 |---|---|
 | t3.micro (24/7 on-demand, post-free-tier) | ~$7.50 |
 | 30 GB gp3 EBS root | ~$2.40 |
+| **Public IPv4 address** (charged for every allocated IPv4 since Feb 2024, including stopped instances) | **~$3.60** |
 | EBS daily snapshots (7-day retention) | <$0.50 |
-| Elastic IP (attached) | $0 |
 | SSM Parameter Store (Standard tier) | $0 |
 | Data egress (well under 100 GB/mo always-free) | $0 |
-| **Total** | **~$10/mo** |
+| **Total** | **~$14/mo** |
 
-Stop the instance when not demoing to drop compute to $0 (EBS still bills).
+Stop the instance when not demoing to drop compute to $0; EBS (~$2.40) and
+the EIP IPv4 charge (~$3.60) keep billing for a stopped instance, so the
+idle cost floor is ~$6/mo. To get to truly zero you have to `terraform
+destroy` (releases the EIP) — but then you also lose the EBS volume and
+the rolling snapshots aren't restorable to a fresh apply without manual
+volume hydration.
 
 ---
 
@@ -154,10 +159,40 @@ sudo docker logs --tail 100 -f lasalle-catalog-mongo-1
 
 ```bash
 terraform destroy
-# Releases EIP, terminates the box, drops the EBS volume + snapshots.
-# SSM parameters are deleted; rotate the OPENAI key in your account if
-# you're worried about residual values in TF state on disk.
+# Releases EIP, terminates the box, drops the EBS volume.
+# Deletes the DLM lifecycle policy and SSM parameters too.
 ```
+
+**Important — DLM snapshots are NOT auto-deleted.** Deleting the lifecycle
+policy stops new snapshots being created, but the historical snapshots it
+already produced keep billing (~$0.05/GB/month per snapshot). After
+`terraform destroy`, run:
+
+```bash
+# List leftover snapshots tagged with this stack:
+aws ec2 describe-snapshots \
+  --owner-ids self \
+  --filters "Name=tag:Project,Values=lasalle-wiki-tutor" \
+  --query 'Snapshots[].[SnapshotId,StartTime,VolumeSize,Description]' \
+  --output table
+
+# Delete them all:
+aws ec2 describe-snapshots \
+  --owner-ids self \
+  --filters "Name=tag:Project,Values=lasalle-wiki-tutor" \
+  --query 'Snapshots[].SnapshotId' --output text \
+  | tr '\t' '\n' \
+  | xargs -I {} aws ec2 delete-snapshot --snapshot-id {}
+```
+
+If you redeployed before deleting the old snapshots, the `Project` tag
+filter still scopes correctly because we tag every resource with the
+project name.
+
+After the destroy + snapshot cleanup, also rotate `OPENAI_API_KEY` in
+your OpenAI account if you're worried about residual values in any TF
+state file on disk (or in remote backend versions if you ever switch
+to S3 state).
 
 ---
 

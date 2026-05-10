@@ -65,7 +65,10 @@ markdown files, or missing the embeddings metadata).
 Goal: public URL `https://lasalle.generateeve.com`, HTTPS via Let's Encrypt,
 gated by `WIKI_TUTOR_ACCESS_TOKEN`. Single t3.micro in `eu-west-1`, no SSH
 (SSM Session Manager only), Mongo in compose alongside the app, frontend
-served from FastAPI's bundled `dist/`. Cost ~$10/mo on-demand.
+served from FastAPI's bundled `dist/`. Cost ~$14/mo on-demand (t3.micro
+$7.50 + 30 GB gp3 $2.40 + public IPv4 $3.60 + snapshots <$0.50). See
+[`infra/README.md`](../infra/README.md) for the full breakdown and the
+post-`destroy` snapshot-cleanup recipe.
 
 The provisioning is in [`infra/`](../infra/) — Terraform module that lays
 down the VPC bits, the SSM-managed instance profile, the EBS-snapshot
