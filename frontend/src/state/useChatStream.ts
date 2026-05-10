@@ -170,7 +170,12 @@ function applySseEvent(
           idx = reasoning.length - 1;
         }
         const cur = reasoning[idx] as Extract<ReasoningStep, { kind: "thought" }>;
-        const text = ev.data.accumulated ?? cur.text + ev.data.delta;
+        // Coerce both fields to string before any concat so a payload that
+        // omits one of them cannot leak the literal "undefined" into the UI.
+        const delta = typeof ev.data.delta === "string" ? ev.data.delta : "";
+        const accumulated =
+          typeof ev.data.accumulated === "string" ? ev.data.accumulated : null;
+        const text = accumulated ?? cur.text + delta;
         reasoning[idx] = { ...cur, text };
         return { ...t, reasoning };
       });
@@ -182,7 +187,8 @@ function applySseEvent(
         const idx = findActiveThoughtIndex(reasoning);
         if (idx === -1) return t;
         const cur = reasoning[idx] as Extract<ReasoningStep, { kind: "thought" }>;
-        const finalText = ev.data.full_text ?? cur.text;
+        const finalText =
+          typeof ev.data.full_text === "string" ? ev.data.full_text : cur.text;
         reasoning[idx] = { ...cur, text: finalText, status: "done", endedAt: Date.now() };
         return { ...t, reasoning };
       });
@@ -233,12 +239,21 @@ function applySseEvent(
       });
 
     case "final_response.delta":
-      return updateTurn(state, turnId, (t) => ({
-        ...t,
-        // The accumulated field is the source of truth — avoids losing tokens
-        // if a delta is missed and avoids double-applying on retry.
-        answer: { markdown: ev.data.accumulated, done: false },
-      }));
+      return updateTurn(state, turnId, (t) => {
+        // Prefer the rolling accumulated text; if the server omitted it,
+        // append the delta to the current markdown. Either way, never let
+        // a missing field corrupt the answer with an "undefined" string.
+        const accumulated =
+          typeof ev.data.accumulated === "string" ? ev.data.accumulated : null;
+        const delta = typeof ev.data.delta === "string" ? ev.data.delta : "";
+        return {
+          ...t,
+          answer: {
+            markdown: accumulated ?? t.answer.markdown + delta,
+            done: false,
+          },
+        };
+      });
 
     case "final_response.end":
       return updateTurn(state, turnId, (t) => ({

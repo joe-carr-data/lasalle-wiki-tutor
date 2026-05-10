@@ -813,6 +813,32 @@ button { font: inherit; }
 }
 .btn-danger:hover { filter: brightness(0.94); }
 
+.error-boundary {
+  max-width: 720px;
+  margin: 64px auto;
+  padding: 24px;
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+}
+.error-boundary h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  color: var(--danger);
+}
+.error-boundary pre {
+  background: var(--bg-3);
+  padding: 12px;
+  border-radius: var(--r-sm);
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 0 0 16px;
+}
+.error-boundary button + button { margin-left: 8px; }
+
 .replay-banner {
   align-self: center;
   background: var(--bg-3);

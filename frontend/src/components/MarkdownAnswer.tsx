@@ -50,15 +50,19 @@ export function MarkdownAnswer({
   showSources = true,
   lang,
 }: MarkdownAnswerProps) {
+  // Coerce to string defensively — react-markdown crashes on undefined,
+  // which would blank the entire app. Any non-string upstream bug is
+  // contained here.
+  const safeText = typeof text === "string" ? text : "";
   // We pass the rolling accumulated text — re-parse on every delta. Memoization
   // on Markdown means React only re-renders the diff, which keeps streaming
   // jitter manageable on the small bundles the agent emits.
   const citations = useMemo(
-    () => (showSources && done ? extractCitations(text) : []),
-    [showSources, done, text],
+    () => (showSources && done ? extractCitations(safeText) : []),
+    [showSources, done, safeText],
   );
 
-  if (!text && streaming) {
+  if (!safeText && streaming) {
     // Pre-token state — the timeline already shows "Thinking…" so the bubble
     // stays minimal here. A typing dot keeps the UI responsive.
     return (
@@ -73,7 +77,7 @@ export function MarkdownAnswer({
   return (
     <div className={`answer ${streaming ? "answer-streaming" : ""}`} aria-live="polite">
       <div className="answer-md">
-        <Markdown text={text} />
+        <Markdown text={safeText} />
         {streaming && <span className="answer-caret" aria-hidden="true" />}
       </div>
       {citations.length > 0 && (
