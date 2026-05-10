@@ -1,0 +1,11 @@
+# Typst auxiliary / preview artifacts produced while iterating on figures.
+# The published manuscript is main.pdf at the repo root of paper/.
+preview-*.png
+preview-*.pdf
+*.aux
+
+# Reviewer build of the paper — contains the live access token injected via
+# `typst compile --input access-token=...`. NEVER commit this; the public
+# main.pdf is the source-controlled artefact.
+main-reviewer.pdf
+main-with-token.pdf
