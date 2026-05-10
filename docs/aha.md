@@ -192,6 +192,36 @@ the t3.micro budget with hundreds of MB to spare for FastAPI + agno.
 stale sidecar fails the startup health check loudly instead of
 returning garbage.**
 
+## Phase 4: thin tool surface beats one mega-tool
+
+Originally the plan called for a single ``retrieve_program_candidates``
+tool the agno agent would call. After wiring it up, the LLM kept
+re-running searches when it actually wanted *one specific section* of a
+program (curriculum, careers, etc.). Splitting into 10 named tools
+(``search_programs``, ``get_program``, ``get_program_section``,
+``get_curriculum``, ``compare_programs``, ``get_index_facets``, …) let
+the model pick the right primitive on the first try and dropped tool
+counts per response from ~4 down to 1–3 for typical queries.
+**Build the tool surface around the personas, not around an internal
+abstraction.**
+
+## Phase 4: each tool owns its TOOL_END emission
+
+Every catalog tool calls ``agent.on_tool_result(tool_name=..., summary=...)``
+right before returning. This is what makes the SSE ``tool.end`` event
+fire with a non-empty ``result_preview`` — without it the client sees
+``tool.start`` followed by silence, which looks like a hang. The result
+preview also surfaces in the debug console (``ask_tutor.py`` prints the
+first ~150 chars), which makes diagnosing wrong-tool calls fast.
+
+## Phase 4: budget the LLM's tool calls in the system prompt
+
+The system prompt's "≤ 5 tool calls per response" line plus the
+"when to use what" table cut the agent's median tool count materially.
+Without the budget, comparison queries spiraled into 8+ calls. With the
+budget the model plans more carefully, and the cost/latency stays
+predictable for a t3.micro demo.
+
 ## The Chrome MCP blocks JS that reads cookie/query-string strings
 
 We hit "BLOCKED: Cookie/query string data" when our exploration JS

@@ -7,8 +7,8 @@ topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **3 – Wiki + read API** (complete; pilot validated, full build green)
-Next phase: **4 – Student-facing AI assistant** (not started)
+Phase: **4 – Student-facing AI assistant** (agent integration complete; smoke-tested end-to-end)
+Next phase: **demo deployment to t3.micro** (out of plan scope)
 
 ## Target
 

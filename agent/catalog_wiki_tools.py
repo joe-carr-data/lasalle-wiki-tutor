@@ -1,0 +1,422 @@
+"""Agno-compatible tools that wrap ``catalog_wiki_api`` v1.
+
+These are the ten functions the LLM agent has access to. Each one:
+
+- Has a clear docstring (Agno builds the tool schema from it).
+- Accepts simple primitive args (Agno tool-schema-friendly).
+- Returns a JSON string the LLM can parse.
+- Catches all expected errors (``CatalogApiError``, ``ValueError``, etc.)
+  and turns them into a structured ``{"ok": false, "error": ...}`` payload
+  rather than letting an exception bubble up.
+- Calls ``agent.on_tool_result(...)`` after the work is done so the
+  ``BaseStreamingAgent`` event loop emits a ``TOOL_END`` SSE event.
+
+The factory ``build_catalog_tools(agent)`` returns a list of bound tool
+callables ready to hand to ``agno.agent.Agent(tools=...)``.
+
+The full list of tool names is exported as ``CATALOG_TOOL_NAMES`` so the
+``WikiTutorAgent`` can pre-register the ``tool_result_queues`` for each.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Callable
+
+import catalog_wiki_api as api
+from catalog_wiki_api import CatalogApiError
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Names exported for tool_result_queues bookkeeping
+# ---------------------------------------------------------------------------
+
+CATALOG_TOOL_NAMES: tuple[str, ...] = (
+    "search_programs",
+    "list_programs",
+    "get_index_facets",
+    "get_program",
+    "get_program_section",
+    "get_curriculum",
+    "get_subject",
+    "compare_programs",
+    "get_faq",
+    "get_glossary_entry",
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _json(payload: Any) -> str:
+    """Serialize a payload to compact JSON the LLM can read."""
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _error(code: str, message: str) -> str:
+    """Build a structured error response."""
+    return _json({"ok": False, "error": {"code": code, "message": message}})
+
+
+def _summary_of(payload: dict | list, *, head: int = 200) -> str:
+    """Compact preview string for the TOOL_END event's ``result_preview``."""
+    s = _json(payload)
+    return s if len(s) <= head else s[: head - 3] + "..."
+
+
+# ---------------------------------------------------------------------------
+# Builder
+# ---------------------------------------------------------------------------
+
+
+def build_catalog_tools(agent: Any) -> list[Callable]:
+    """Return the catalog tool callables, bound to the given agent.
+
+    The agent is the ``BaseStreamingAgent`` subclass — we close over it so
+    each tool can call ``on_tool_result`` after finishing, which is what
+    causes a ``TOOL_END`` SSE event to fire.
+    """
+
+    async def _emit_end(name: str, payload_str: str) -> None:
+        try:
+            await agent.on_tool_result(
+                tool_name=name,
+                summary=payload_str[:500],
+                call_id=None,  # FIFO match by name; only one call active at a time
+            )
+        except Exception as exc:  # pragma: no cover — best-effort
+            logger.warning("[catalog_tools] on_tool_result(%s) raised: %s", name, exc)
+
+    # ──────────────────────────────────────────────────────────────────
+    # Discovery / search
+    # ──────────────────────────────────────────────────────────────────
+
+    async def search_programs(
+        query: str,
+        lang: str = "en",
+        level: str | None = None,
+        area: str | None = None,
+        modality: str | None = None,
+        top_k: int = 8,
+    ) -> str:
+        """Hybrid (BM25 + semantic) search over the program catalog.
+
+        This is the primary retrieval tool. Use it whenever the student asks
+        about a topic, an interest, or a vague program description. Prefer it
+        over ``list_programs`` for free-text queries.
+
+        Args:
+            query: The student's search phrase. Synonyms are expanded
+                automatically (e.g. "machine learning" → AI; "hacking" →
+                cybersecurity).
+            lang: ``"en"`` or ``"es"`` — match the user's language.
+            level: Optional filter — one of ``bachelor``, ``master``,
+                ``doctorate``, ``specialization``, ``online``, ``summer``,
+                ``other``.
+            area: Optional area filter — one of the keys returned by
+                ``get_index_facets`` (``ai-data-science``, ``architecture``,
+                ``business-management``, ``computer-science``,
+                ``cybersecurity``, ``animation-digital-arts``,
+                ``telecom-electronics``, ``health-engineering``,
+                ``philosophy-humanities``, ``project-management``).
+            modality: Optional — ``on-site``, ``online``, ``hybrid``.
+            top_k: How many candidates to return (default 8).
+
+        Returns:
+            JSON: ``{"ok": True, "query": ..., "total": N, "results": [...]}``.
+        """
+        try:
+            filters = {"level": level, "area": area, "modality": modality}
+            payload = api.search_programs(query, filters=filters, top_k=top_k, lang=lang)
+            out = {
+                "ok": True,
+                "query": payload["query"],
+                "total": payload["total"],
+                "results": payload["results"],
+                "applied_filters": payload["applied_filters"],
+                "lang": payload["lang"],
+            }
+            result = _json(out)
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("search_programs failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("search_programs", result)
+        return result
+
+    async def list_programs(
+        lang: str = "en",
+        level: str | None = None,
+        area: str | None = None,
+        modality: str | None = None,
+        language: str | None = None,
+        offset: int = 0,
+        limit: int = 30,
+    ) -> str:
+        """List programs with structured filters (no free-text search).
+
+        Use this when the student asks "show me all bachelors", "what
+        masters are online", "programs taught in English", etc.
+
+        Args:
+            lang: ``"en"`` or ``"es"``.
+            level: Optional level filter (see ``search_programs``).
+            area: Optional area filter (see ``search_programs``).
+            modality: Optional — ``on-site``, ``online``, ``hybrid``.
+            language: Optional language of instruction filter (e.g.
+                ``"English"`` to find English-taught programs).
+            offset: Pagination offset (default 0).
+            limit: Max programs per call (default 30).
+
+        Returns:
+            JSON: ``{"ok": True, "total": N, "programs": [...], ...}``.
+        """
+        try:
+            payload = api.list_programs(
+                level=level, area=area, modality=modality, language=language,
+                lang=lang, offset=offset, limit=limit,
+            )
+            out = {"ok": True, **payload}
+            result = _json(out)
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("list_programs failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("list_programs", result)
+        return result
+
+    async def get_index_facets(lang: str = "en") -> str:
+        """Return all areas, levels, modalities, and instruction languages with counts.
+
+        Use this once at the start of a session to understand what's in the
+        catalog before drilling down. Cheap (single call, ~200 ms).
+
+        Args:
+            lang: ``"en"`` or ``"es"``.
+
+        Returns:
+            JSON: ``{"ok": True, "areas": [...], "levels": [...], ...}``.
+        """
+        try:
+            payload = api.get_index_facets(lang=lang)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_index_facets failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_index_facets", result)
+        return result
+
+    # ──────────────────────────────────────────────────────────────────
+    # Detail retrieval
+    # ──────────────────────────────────────────────────────────────────
+
+    async def get_program(program_id: str, include_sections: bool = False) -> str:
+        """Return the full detail for one program.
+
+        Use this after ``search_programs`` to fetch the overview of the
+        specific program(s) the student is interested in. Only set
+        ``include_sections=True`` if the student needs a full deep-dive —
+        the response gets large.
+
+        Args:
+            program_id: Canonical id, e.g. ``"en/bachelor-animation-and-vfx"``.
+            include_sections: When ``True`` also returns the goals,
+                requirements, careers, methodology, and faculty section
+                bodies. Default ``False``.
+
+        Returns:
+            JSON: program detail with frontmatter + ``overview_md`` (and
+            ``sections`` if requested).
+        """
+        try:
+            payload = api.get_program(program_id, include_sections=include_sections)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_program failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_program", result)
+        return result
+
+    async def get_program_section(program_id: str, section: str) -> str:
+        """Return one section of a program's content.
+
+        Sections (case-sensitive): ``goals``, ``requirements``,
+        ``curriculum``, ``careers``, ``methodology``, ``faculty``.
+        Use this when the student asks something focused (e.g. "what jobs
+        can I get with this degree?" → fetch ``careers``).
+
+        Args:
+            program_id: Canonical id (e.g. ``"en/bachelor-animation-and-vfx"``).
+            section: One of the six section names.
+
+        Returns:
+            JSON: ``{"ok": True, "section": ..., "body_markdown": "..."}``.
+        """
+        try:
+            payload = api.get_program_section(program_id, section)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_program_section failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_program_section", result)
+        return result
+
+    async def get_curriculum(program_id: str) -> str:
+        """Return the structured year-by-year curriculum for a program.
+
+        Use this for "what courses will I take?" / "show me year 2 of
+        the AI bachelor". The response is structured (year → semester →
+        subjects) so the LLM can navigate it without re-parsing markdown.
+
+        Args:
+            program_id: Canonical id of the program.
+
+        Returns:
+            JSON: ``{"ok": True, "years": [{"year": ..., "sections":
+            [{"semester": ..., "subjects": [...]}]}, ...]}``.
+        """
+        try:
+            payload = api.get_curriculum(program_id)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_curriculum failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_curriculum", result)
+        return result
+
+    async def get_subject(subject_id: str) -> str:
+        """Return the full detail for one subject (course).
+
+        Use this when the student asks about a specific course mentioned
+        in a program's curriculum (e.g. "what is 'Linear algebra' about?").
+
+        Args:
+            subject_id: Canonical id, e.g. ``"en/algebra-lineal"``.
+
+        Returns:
+            JSON: subject detail (description, prerequisites, objectives,
+            contents, methodology, evaluation, etc.).
+        """
+        try:
+            payload = api.get_subject(subject_id)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_subject failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_subject", result)
+        return result
+
+    # ──────────────────────────────────────────────────────────────────
+    # Comparison & relations
+    # ──────────────────────────────────────────────────────────────────
+
+    async def compare_programs(program_ids: list[str]) -> str:
+        """Return normalised comparable fields for N programs side-by-side.
+
+        Use this for the comparison-shopper persona: "Difference between
+        Bachelor in CS and Bachelor in AI?". Pass 2-4 canonical ids.
+
+        Args:
+            program_ids: List of canonical program ids.
+
+        Returns:
+            JSON: ``{"ok": True, "rows": [...], "lang": ...}``. Each row
+            has the same keys (title, level, area, ects, modality,
+            duration, languages_of_instruction, schedule, location,
+            start_date, subject_count) so the LLM can render a table.
+        """
+        try:
+            payload = api.compare_programs(program_ids)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("compare_programs failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("compare_programs", result)
+        return result
+
+    # ──────────────────────────────────────────────────────────────────
+    # FAQ / glossary
+    # ──────────────────────────────────────────────────────────────────
+
+    async def get_faq(lang: str = "en") -> str:
+        """Return the wiki's student FAQ document.
+
+        Use this to answer routing questions ("how do I find programs in
+        English?", "where is pricing?"). The FAQ explicitly documents
+        that tuition is not on the site — when the student asks about
+        cost, surface the admissions contact instead of guessing.
+
+        Args:
+            lang: ``"en"`` or ``"es"``.
+
+        Returns:
+            JSON: ``{"ok": True, "title": ..., "body_markdown": "..."}``.
+        """
+        try:
+            payload = api.get_faq(lang=lang)
+            result = _json({"ok": True, **payload})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_faq failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_faq", result)
+        return result
+
+    async def get_glossary_entry(term: str, lang: str = "en") -> str:
+        """Look up a glossary term (e.g. ``"ECTS"``, ``"Modality"``, ``"Ramon Llull"``).
+
+        Use this when the student uses unfamiliar academic terminology
+        and a brief definition would help. Returns ``None`` if the term
+        isn't in the glossary.
+
+        Args:
+            term: Term to look up (case-insensitive).
+            lang: ``"en"`` or ``"es"``.
+
+        Returns:
+            JSON: ``{"ok": True, "entry": {...}}`` or
+            ``{"ok": True, "entry": null}`` if not found.
+        """
+        try:
+            entry = api.get_glossary_entry(term, lang=lang)
+            result = _json({"ok": True, "entry": entry})
+        except CatalogApiError as exc:
+            result = _error(exc.code, exc.message)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("get_glossary_entry failed")
+            result = _error("internal_error", str(exc))
+        await _emit_end("get_glossary_entry", result)
+        return result
+
+    return [
+        search_programs,
+        list_programs,
+        get_index_facets,
+        get_program,
+        get_program_section,
+        get_curriculum,
+        get_subject,
+        compare_programs,
+        get_faq,
+        get_glossary_entry,
+    ]
