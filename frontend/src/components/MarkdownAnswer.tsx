@@ -29,8 +29,16 @@ const COMPONENTS: Components = {
       </a>
     );
   },
-  // Strip raw HTML to be safe; remark-gfm + plain markdown is enough.
-  // Tables / lists / code fences / blockquotes all get default rendering.
+  // Wrap tables in a horizontally-scrollable container. Without this, wide
+  // comparison tables (a frequent agent output) overflow the bubble on
+  // narrow viewports and there's no way to see the right-side columns.
+  table({ children, ...rest }) {
+    return (
+      <div className="md-table-wrap">
+        <table {...rest}>{children}</table>
+      </div>
+    );
+  },
 };
 
 const REMARK_PLUGINS = [remarkGfm];

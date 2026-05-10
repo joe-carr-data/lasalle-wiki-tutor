@@ -720,17 +720,45 @@ button { font: inherit; }
   overflow-x: auto;
 }
 .answer-md pre code { background: transparent; padding: 0; }
+
+/* Markdown tables (comparisons, curricula, etc.) get a horizontally
+ * scrollable wrapper so wide tables don't blow out the bubble on narrow
+ * viewports. The wrapper takes the overflow; the table itself uses
+ * width: max-content so columns size to their content rather than being
+ * crushed to fit. A subtle right-edge fade hints "scroll for more". */
+.md-table-wrap {
+  margin: 0.6em 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background:
+    linear-gradient(to right, var(--paper) 30%, rgba(255, 255, 255, 0)) left center / 24px 100% no-repeat,
+    linear-gradient(to left, var(--paper) 30%, rgba(255, 255, 255, 0)) right center / 24px 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.08), transparent) left center / 14px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.08), transparent) right center / 14px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
 .answer-md table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 0.6em 0;
+  /* Table sizes to its content — wrapper handles overflow. The min-width
+   * keeps narrow tables stretching to the bubble width like before. */
+  min-width: 100%;
+  width: max-content;
+  margin: 0;
   font-size: 14px;
+  background: var(--paper);
 }
 .answer-md th, .answer-md td {
   border: 1px solid var(--border);
   padding: 6px 10px;
   text-align: left;
   vertical-align: top;
+  /* Avoid awkward mid-word breaks on wide content; let columns grow and
+   * scroll instead. Long URLs are still allowed to break. */
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
 }
 .answer-md th { background: var(--bg-3); font-weight: 600; }
 .answer-md blockquote {
