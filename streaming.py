@@ -53,6 +53,8 @@ from core.cancellation_registry import (
     unregister_query,
 )
 from core.conversations_store import close_store, init_store
+from core.title_polisher import schedule_polish
+from core.turn_trace_recorder import TurnTraceRecorder
 from events import AgentEvent, EventType
 from events.models import AgentRole
 from fastapi_sse_contract import format_sse
@@ -175,7 +177,27 @@ async def stream_query(
         direct.setup()
         await direct.async_setup()
 
+        # Per-turn trace recorder — runs in parallel with the SSE adapter.
+        # ``agent_run_id`` is set on each AgentEvent by the event manager;
+        # we capture it from the first event we see and key the trace by
+        # it (matches agno's run_id).
+        recorder = TurnTraceRecorder(
+            session_id=session_id,
+            user_id=user_id,
+            run_id=query_id,  # default; replaced below once we see the real run_id
+            lang=lang or "en",
+        )
+        # Track the agent's final answer text so the title polisher can
+        # consider it. Built up from RESPONSE_DELTA content.
+        answer_chunks: list[str] = []
+
         async def event_handler(event: AgentEvent) -> None:
+            # Lazily lock in the real agno run_id the first time we see it.
+            if event.agent_run_id and recorder._doc["_id"] == query_id:
+                recorder._doc["_id"] = event.agent_run_id
+            await recorder.on_event(event)
+            if event.event_type == EventType.RESPONSE_DELTA and event.content:
+                answer_chunks.append(event.content)
             sse_events = await adapter.convert(event)
             for sse_event in sse_events:
                 await event_queue.put(format_sse(sse_event))
@@ -268,18 +290,35 @@ async def stream_query(
             # Surface this conversation in the sidebar. Idempotent — first
             # turn inserts with a heuristic title, later turns just bump
             # updated_at. Failures are non-fatal; chat still works.
+            #
+            # Same block writes the per-turn trace doc and (on the very
+            # first turn for this conversation) schedules the LLM title
+            # polisher in the background.
             if user_id:
                 try:
                     from core.conversations_store import get_store
 
-                    await get_store().ensure_meta(
+                    store = get_store()
+                    is_first_turn = await store.meta.find_one(
+                        {"_id": session_id}
+                    ) is None
+                    await store.ensure_meta(
                         session_id=session_id,
                         user_id=user_id,
                         first_user_message=query,
                         lang=lang or "en",
                     )
+                    await recorder.flush(store)
+                    if is_first_turn:
+                        agent_text = "".join(answer_chunks)
+                        schedule_polish(
+                            session_id=session_id,
+                            user_message=query,
+                            agent_message=agent_text,
+                            expected_version=1,
+                        )
                 except Exception as exc:  # pragma: no cover
-                    logger.warning("[wiki-sse] ensure_meta failed: %s", exc)
+                    logger.warning("[wiki-sse] post-turn persistence failed: %s", exc)
 
             yield format_sse(adapter.create_session_end())
 

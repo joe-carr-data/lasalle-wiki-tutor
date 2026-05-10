@@ -252,11 +252,17 @@ class ConversationsStore:
             return None
         agno = agno or {}
 
-        traces_cursor = self.traces.find({"session_id": session_id})
-        traces = {doc["_id"]: doc async for doc in traces_cursor}
+        # The trace recorder keys docs by an internal run_id that does not
+        # match agno's run_id. We zip them by ordinal (started_at order)
+        # since both lists are produced sequentially per turn.
+        traces_cursor = self.traces.find({"session_id": session_id}).sort(
+            "started_at", 1
+        )
+        traces_list = [doc async for doc in traces_cursor]
 
         turns = []
-        for run in agno.get("runs", []) or []:
+        runs = agno.get("runs", []) or []
+        for idx, run in enumerate(runs):
             run_id = run.get("run_id")
             user_msg = next(
                 (m for m in run.get("messages", []) if m.get("role") == "user"),
@@ -270,7 +276,7 @@ class ConversationsStore:
                 ),
                 None,
             )
-            trace = traces.get(run_id)
+            trace = traces_list[idx] if idx < len(traces_list) else None
             turns.append(
                 {
                     "run_id": run_id,
