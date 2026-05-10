@@ -298,8 +298,12 @@ button { font: inherit; }
 /* ---------- Messages ---------- */
 .msg { display: flex; gap: 12px; align-items: flex-start; }
 .msg-user { justify-content: flex-end; }
-.msg-user .msg-body { align-items: flex-end; }
-.msg-body { display: flex; flex-direction: column; gap: 8px; max-width: 88%; }
+.msg-user .msg-body { align-items: flex-end; max-width: 75%; }
+/* Agent messages fill the available column width so the answer bubble
+   matches the composer width. User messages stay capped for visual
+   balance against the right edge. */
+.msg-agent .msg-body { flex: 1; min-width: 0; }
+.msg-body { display: flex; flex-direction: column; gap: 8px; }
 
 .avatar {
   width: 30px; height: 30px;
