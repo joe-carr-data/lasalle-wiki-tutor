@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 .venv/
 
-# uv
-uv.lock
+# uv: uv.lock IS committed (pins exact versions for reproducible deploys —
+# without it `uv sync --frozen` fails on a fresh clone and the EC2 bootstrap
+# halts at step 10).
 
 # Data (too large for git; reproduced by running the script)
 data/
