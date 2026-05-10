@@ -1029,3 +1029,87 @@ button { font: inherit; }
   background: var(--border-strong);
   cursor: not-allowed;
 }
+
+/* ---------- Mobile responsiveness ----------
+ *
+ * Below 768 px (phones, small tablets in portrait):
+ *   - The 280-column sidebar slides off-screen by default. The hamburger
+ *     in TopBar slides it back in over a backdrop.
+ *   - The grid collapses to a single column so the main pane gets the
+ *     full viewport width — fixes the "composer text wrapped per
+ *     character" symptom.
+ *   - All horizontal padding is reduced from 28 px to 14 px so content
+ *     doesn't waste edge space on narrow screens.
+ */
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar-host {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(86vw, 320px);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform var(--dur-base) var(--ease-out);
+    box-shadow: var(--shadow-3);
+  }
+  .app-sidebar-open .sidebar-host {
+    transform: translateX(0);
+  }
+  .sidebar {
+    height: 100%;
+  }
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.42);
+    border: 0;
+    padding: 0;
+    z-index: 40;
+    cursor: pointer;
+    animation: modal-fade var(--dur-base) var(--ease-out);
+  }
+  .topbar { padding: 10px 14px; }
+  .topbar-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: 0;
+    border-radius: var(--r-sm);
+    color: var(--fg-2);
+    cursor: pointer;
+    margin-right: 4px;
+  }
+  .topbar-menu-btn:hover { background: var(--mist); }
+  .thread { padding: 16px 0 12px; }
+  .thread-inner { padding: 0 14px; gap: 16px; }
+  .composer-wrap { padding: 10px 14px 16px; }
+  .composer { padding: 10px 12px 6px; }
+  .empty { padding: 28px 14px 16px; }
+
+  /* Bubble widths and message layout — keep text readable on narrow screens. */
+  .msg-user .msg-body { max-width: 92%; }
+  .msg-agent .msg-body { min-width: 0; }
+  .answer { padding: 10px 12px; font-size: 14.5px; }
+  .answer-md table { font-size: 13px; }
+  .bubble { word-wrap: break-word; overflow-wrap: anywhere; }
+
+  /* The starter-prompt grid in EmptyState was a 2-up flex; stack on mobile. */
+  .sugg-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .suggestions { margin: 8px 0 0; }
+}
+
+/* Hide the hamburger button on wider viewports — the sidebar is always
+ * visible there and the button would just be visual noise. */
+@media (min-width: 769px) {
+  .topbar-menu-btn { display: none; }
+  .sidebar-backdrop { display: none; }
+}

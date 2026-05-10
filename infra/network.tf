@@ -12,7 +12,8 @@
 
 resource "aws_security_group" "wiki_tutor" {
   name_prefix = "${local.name_prefix}-"
-  description = "LaSalle Wiki Tutor — public web only, no SSH (SSM-managed)."
+  // SG descriptions must be ASCII-only and match [a-zA-Z0-9. _-:/()#,@[\]+=&;{}!$*]+
+  description = "LaSalle Wiki Tutor public web only, no SSH (SSM-managed)."
   vpc_id      = data.aws_vpc.default.id
 
   // Allow re-creating the SG without breaking the EC2 dependency: when the
@@ -28,7 +29,7 @@ resource "aws_security_group" "wiki_tutor" {
 
 resource "aws_vpc_security_group_ingress_rule" "http" {
   security_group_id = aws_security_group.wiki_tutor.id
-  description       = "HTTP — for ACME HTTP-01 + redirect to HTTPS."
+  description       = "HTTP for ACME HTTP-01 and redirect to HTTPS"
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 80
   to_port           = 80
@@ -37,7 +38,7 @@ resource "aws_vpc_security_group_ingress_rule" "http" {
 
 resource "aws_vpc_security_group_ingress_rule" "https" {
   security_group_id = aws_security_group.wiki_tutor.id
-  description       = "HTTPS — public app traffic."
+  description       = "HTTPS public app traffic"
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 443
   to_port           = 443
@@ -46,7 +47,7 @@ resource "aws_vpc_security_group_ingress_rule" "https" {
 
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.wiki_tutor.id
-  description       = "All outbound — apt, OpenAI, GitHub, Let's Encrypt."
+  description       = "All outbound for apt OpenAI GitHub and Lets Encrypt"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }

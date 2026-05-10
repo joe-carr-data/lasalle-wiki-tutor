@@ -31,6 +31,10 @@ export default function App() {
   const [lang, setLang] = useState<"en" | "es">("en");
   const [focusToken, setFocusToken] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  // Mobile sidebar visibility. Closed by default; the topbar hamburger
+  // toggles it. Closing happens automatically when the user taps the
+  // backdrop, picks a conversation, or hits New chat.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Cmd/Ctrl+K focuses the composer.
   useEffect(() => {
@@ -84,9 +88,11 @@ export default function App() {
     resetSession(fresh);
     conversations.setActive(fresh);
     void conversations.select(null);
+    setSidebarOpen(false);
   }
 
   function handleSelectConversation(id: string) {
+    setSidebarOpen(false);
     if (id === state.sessionId) return;
     cancel();
     resetSession(id);
@@ -139,6 +145,8 @@ export default function App() {
     <>
       <Shell
         ref={scrollRef}
+        sidebarOpen={sidebarOpen}
+        onSidebarClose={() => setSidebarOpen(false)}
         sidebar={
           <Sidebar
             conversations={conversations.items.map((c) => ({ id: c.id, title: c.title }))}
@@ -152,7 +160,13 @@ export default function App() {
             onRequestDelete={handleRequestDelete}
           />
         }
-        topBar={<TopBar title="Wiki Tutor" lang={lang} />}
+        topBar={
+          <TopBar
+            title="Wiki Tutor"
+            lang={lang}
+            onMenuClick={() => setSidebarOpen((v) => !v)}
+          />
+        }
         thread={
           showEmpty ? (
             <EmptyState lang={lang} onPick={handleSend} />

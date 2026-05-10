@@ -16,6 +16,7 @@ export {
   Loader2,
   Lock,
   LogOut,
+  Menu,
   MessageSquare,
   Pencil,
   Plus,
