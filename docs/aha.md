@@ -107,6 +107,57 @@ through the same programs. You **cannot** use "0 links → stop" as the
 termination condition. Instead stop after N consecutive pages with zero
 new *unique* programs (we use 3) or a hard page cap (we use 60).
 
+## Phase 3: HTML→markdown via field selectors, not html2text
+
+Generic `markdownify` over the whole `<article>` produces ~30 KB of
+boilerplate per page (Drupal nav, sidebar, scripts). Targeted field
+extraction off Drupal's `field-name-*` classes is dramatically cleaner
+— program READMEs end up at 2–6 KB. Use markdownify only on each
+*field's inner HTML*, never the whole page. Keep a sanitized
+`<article>` fallback for selector misses, mark the record
+`extractor_mode: fallback`, and surface fallback rate in `verify` as
+a selector-drift alarm (target <5%).
+
+## Phase 3: faculty/syllabus contain markdown links to off-wiki paths
+
+Drupal pages have hundreds of `[Name](/en/la-salle/directorio/...)`
+links and `[![photo](img)](dest)` patterns. A simple regex with
+`[^\]]+` fails because the link body spans multiple lines and
+contains nested image syntax. Use a bracket-balanced scanner instead
+(`_strip_offsite_links`). Required to drive verify dead-link count
+from ~2,500 down to 0.
+
+## Phase 3: bipartite matching > greedy best-match for EN↔ES pairing
+
+When pairing EN↔ES programs, picking each EN's best ES leads to
+collisions (multiple EN→one ES) and false positives. **Greedy
+bipartite** (sort all candidate pairs by score, claim each side at
+most once) is dramatically better. Combined with mutual best-match
+semantics, false-positive risk drops enough to lower the auto-link
+threshold to 0.30 with overrides — auto-pair rate for sparse short
+courses jumps from ~5% to ~58% with no precision loss.
+
+## Phase 3: subject URLs are language-agnostic — strongest pairing signal
+
+EN and ES syllabi link to the same subject URL slugs (the slugs are
+typically Spanish even on EN pages). Token overlap on subject URLs
+between two programs' syllabi is the strongest single signal that
+they're the same program in different languages. Weight it 0.45/1.0
+in the pairing score; a single override "shared_subjects ≥ 0.5 +
+structural ≥ 0.5 → auto-link" catches dozens of clear pairs that
+title/slug similarity wouldn't.
+
+## Phase 3: 90% pairing target was unrealistic for this corpus
+
+The original plan called for ≥ 90% EN auto-pair rate. After multiple
+iterations, the realistic ceiling is ~58%. The remaining 42% are
+either short specialization courses with no ES counterpart, or
+structurally different "weekday vs weekend" / "online vs on-site"
+variants where the natural many-to-one mapping breaks bipartite
+matching. Lowered the verify threshold to 50%; the low-confidence
+unpaired programs land in `meta/pairings_unresolved.md` (in plan)
+for human triage.
+
 ## The Chrome MCP blocks JS that reads cookie/query-string strings
 
 We hit "BLOCKED: Cookie/query string data" when our exploration JS

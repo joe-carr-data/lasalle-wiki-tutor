@@ -9,5 +9,11 @@ uv.lock
 # Data (too large for git; reproduced by running the script)
 data/
 
+# Phase 3 wiki output (regenerable from data/raw_html/)
+wiki/
+
+# Pytest cache
+.pytest_cache/
+
 # macOS
 .DS_Store

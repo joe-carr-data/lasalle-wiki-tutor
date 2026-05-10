@@ -1,14 +1,14 @@
 # SalleURL Catalog Wiki – Documentation Index
 
-Last updated: 2026-05-04
+Last updated: 2026-05-10
 
 This index points to the most recent and authoritative document for each
 topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **2 – Bulk download** (complete, all checks passed)
-Next phase: **3 – HTML to markdown conversion** (not started)
+Phase: **3 – Wiki + read API** (complete; pilot validated, full build green)
+Next phase: **4 – Student-facing AI assistant** (not started)
 
 ## Target
 
@@ -26,6 +26,7 @@ CMS: Drupal
 | 02 | [`02-download-plan.md`](./02-download-plan.md) | Phased plan for downloading HTML + ancillary PDFs and building the wiki source | Current |
 | 03 | [`03-storage-layout.md`](./03-storage-layout.md) | On-disk layout for raw HTML, PDFs, manifests | Current |
 | 04 | [`04-knowledge-base-map.md`](./04-knowledge-base-map.md) | What's in the corpus, what's useful for students, content tiers | Current |
+| 05 | [`05-wiki-architecture.md`](./05-wiki-architecture.md) | Phase 3 wiki layout, build pipeline, and read-only API (`catalog_wiki_api` v1) | Current |
 | –  | [`aha.md`](./aha.md) | Short list of "aha" moments / lessons learned. Read this first when resuming work. | Current |
 
 ## Archive

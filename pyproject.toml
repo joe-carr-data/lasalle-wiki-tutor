@@ -8,7 +8,14 @@ dependencies = [
     "lxml>=5.0",
     "tenacity>=8.2",
     "typer>=0.12",
+    "markdownify>=0.13",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["scripts"]
+packages = ["scripts", "catalog_wiki_api"]
