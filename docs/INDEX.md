@@ -25,6 +25,7 @@ CMS: Drupal
 | 01 | [`01-exploration-findings.md`](./01-exploration-findings.md) | What we learned about salleurl.edu (URL patterns, page anatomy, robots) | Current |
 | 02 | [`02-download-plan.md`](./02-download-plan.md) | Phased plan for downloading HTML + ancillary PDFs and building the wiki source | Current |
 | 03 | [`03-storage-layout.md`](./03-storage-layout.md) | On-disk layout for raw HTML, PDFs, manifests | Current |
+| 04 | [`04-knowledge-base-map.md`](./04-knowledge-base-map.md) | What's in the corpus, what's useful for students, content tiers | Current |
 | –  | [`aha.md`](./aha.md) | Short list of "aha" moments / lessons learned. Read this first when resuming work. | Current |
 
 ## Archive
