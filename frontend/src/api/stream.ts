@@ -84,9 +84,9 @@ export async function* streamQuery(
   const flushFrame = function* (frame: PendingFrame): Generator<SseEvent> {
     if (!frame.event || frame.data.length === 0) return;
     const raw = frame.data.join("\n");
-    let parsed: unknown;
+    let parsed: { data?: unknown } | null;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(raw) as { data?: unknown } | null;
     } catch (err) {
       // Bad JSON shouldn't kill the stream — surface as a synthetic error
       // event and keep going so the reducer can decide to terminate.
@@ -100,7 +100,17 @@ export async function* streamQuery(
       } as SseEvent;
       return;
     }
-    yield { event: frame.event, data: parsed } as SseEvent;
+    // The server wraps each event in an envelope:
+    //   { event_type, event_id, timestamp, elapsed_ms, correlation_id,
+    //     agent, data: { ...payload } }
+    // The reducer wants the inner payload directly under `event.data`, so
+    // we unwrap here. Anything else (server emitted a non-enveloped JSON
+    // object) is yielded as-is.
+    const payload =
+      parsed && typeof parsed === "object" && "data" in parsed
+        ? parsed.data
+        : parsed;
+    yield { event: frame.event, data: payload } as SseEvent;
   };
 
   try {

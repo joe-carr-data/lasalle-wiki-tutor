@@ -132,15 +132,26 @@ function applySseEvent(
   turnId: string,
   ev: SseEvent,
 ): ChatStreamState {
-  // Belt-and-braces: any reducer error gets logged + swallowed instead of
-  // unmounting the whole chat. Treat all event payload fields as optional;
-  // only `final_response.end` is guaranteed to carry the full answer.
+  // Belt-and-braces: any reducer error gets logged AND flips the turn to
+  // `error` with a clear "protocol decode error" message — silently
+  // returning `state` previously hid the SSE-envelope/payload mismatch
+  // for hours. Treat all event payload fields as optional; only
+  // `final_response.end` is guaranteed.
   try {
     return _applySseEvent(state, turnId, ev);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("SSE reducer error on event", ev.event, err);
-    return state;
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      ...updateTurn(state, turnId, (t) => ({
+        ...t,
+        status: "error",
+        error: `protocol decode error on ${ev.event}: ${message}`,
+        finishedAt: Date.now(),
+      })),
+      isStreaming: false,
+    };
   }
 }
 

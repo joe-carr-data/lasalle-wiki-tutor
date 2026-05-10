@@ -13,18 +13,13 @@ export interface AgentInfo {
   color?: string;
 }
 
+// The SSE parser unwraps the server envelope so `data` is the inner
+// payload. Envelope metadata (event_id, timestamp, agent, …) is dropped
+// in transit because the reducer doesn't need it. If we ever do, the
+// parser is the place to surface it (e.g. as `ev.meta`).
 interface BaseEnvelope<T extends string, D> {
   event: T;
-  data: D & {
-    // The server places these on the envelope, but reducers don't generally
-    // need them. Kept here so consumers can read them when useful.
-    event_id?: string;
-    event_type?: T;
-    timestamp?: string;
-    elapsed_ms?: number;
-    correlation_id?: string | null;
-    agent?: AgentInfo;
-  };
+  data: D;
 }
 
 export interface SessionStartedData {
