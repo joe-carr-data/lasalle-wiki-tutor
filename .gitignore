@@ -15,5 +15,9 @@ wiki/
 # Pytest cache
 .pytest_cache/
 
+# Local secrets (never commit)
+.env
+.env.local
+
 # macOS
 .DS_Store

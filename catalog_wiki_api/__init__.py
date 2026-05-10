@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from . import store
-from .search import rank_programs
+from .search import RankerMode, rank_programs
 from .types import (
     Curriculum,
     CurriculumSemester,
@@ -191,7 +191,12 @@ def search_programs(
     top_k: int = 10,
     lang: str = "en",
 ) -> ProgramSearchPayload:
-    """Lexical search over title/tags/slug, with optional filters."""
+    """Hybrid (BM25 + cosine) search over the program corpus, with filters.
+
+    This is the primary student-facing retrieval function. The default
+    ranker is hybrid; `LASALLE_RANKER_MODE` can switch to lexical-only,
+    semantic-only, or the legacy token-overlap scorer for ablation.
+    """
     _check_lang(lang)
     filters = filters or {}
     programs = store.all_programs(lang)
@@ -210,6 +215,47 @@ def search_programs(
         "applied_filters": dict(filters),
         "lang": lang,
     }
+
+
+def retrieve_program_candidates(
+    query: str,
+    *,
+    lang: str = "en",
+    filters: dict[str, str | None] | None = None,
+    top_k: int = 10,
+    mode: str | None = None,
+) -> ProgramSearchPayload:
+    """Agent-facing retrieval entrypoint (Phase 4).
+
+    Wraps :func:`search_programs` with a per-call ``mode`` override. The
+    Phase 4 agno tool calls this and forwards the typed payload to the
+    LLM unchanged. Keep agent-side code thin: the retrieval logic, blend
+    weights, and intent prior all live here, behind the v1 API contract.
+
+    Args:
+        query:    natural-language student query (e.g. "machine learning bachelor").
+        lang:     "en" or "es".
+        filters:  optional dict {level, area, modality, language}.
+        top_k:    max candidates to return.
+        mode:     override the ranker mode for this call only:
+                  "hybrid" (default), "lexical", "semantic",
+                  "token_overlap" (legacy). When None, uses the
+                  ``LASALLE_RANKER_MODE`` env var (also defaulting to
+                  "hybrid").
+    """
+    if mode is None:
+        return search_programs(query, filters=filters, top_k=top_k, lang=lang)
+    # Per-call override via env var
+    import os
+    previous = os.environ.get("LASALLE_RANKER_MODE")
+    os.environ["LASALLE_RANKER_MODE"] = mode
+    try:
+        return search_programs(query, filters=filters, top_k=top_k, lang=lang)
+    finally:
+        if previous is None:
+            os.environ.pop("LASALLE_RANKER_MODE", None)
+        else:
+            os.environ["LASALLE_RANKER_MODE"] = previous
 
 
 _AREA_LABELS = {
@@ -615,6 +661,7 @@ __all__ = [
     "CatalogApiError",
     "list_programs",
     "search_programs",
+    "retrieve_program_candidates",
     "get_index_facets",
     "list_languages",
     "get_program",

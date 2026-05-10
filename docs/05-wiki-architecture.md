@@ -179,10 +179,74 @@ Meta:
 
 ### Search
 
-Phase 3 ships baseline lexical search only: token overlap on
-`title + tags + slug` boosted by area/level keyword hits. BM25 /
-synonyms / semantic retrieval are deferred to Phase 4 unless pilot
-quality is clearly inadequate.
+Phase 3 shipped a token-overlap baseline. The pilot showed it had
+clear failure modes (`"machine learning"` → 0 hits; cute 1-week summer
+programs outranking the 4-year AI bachelor on `"AI"`), so Phase 4
+upgraded to a **hybrid lexical + semantic ranker** — see the next
+section.
+
+### Retrieval (Phase 4 — agent-facing)
+
+For the demo deployment on EC2 t3.micro (1 GB RAM, 2 vCPUs), the
+ranker is a two-stage hybrid, all local, all deterministic:
+
+1. **Lexical layer**: BM25-F over weighted fields (`title` 4.0,
+   `tags` 3.0, `area` 2.0, `level` 1.5, `body` 1.0, `slug` 0.5) with
+   EN+ES query expansion via `catalog_wiki_api/synonyms.py`
+   (`machine learning → artificial intelligence`, `hacking →
+   cybersecurity`, `startup → entrepreneurship`, …).
+2. **Semantic layer**: Model2Vec `potion-base-8M` (~8 MB on disk,
+   256-dim, ~5 ms query embed). Embeddings are **precomputed offline**
+   by `scripts/build_embeddings.py` and shipped as a versioned sidecar:
+   `wiki/meta/embeddings_{en,es}.npz` (~180 KB each, L2-normalised),
+   `wiki/meta/embeddings_{en,es}_ids.jsonl`,
+   `wiki/meta/embeddings_meta.json` (sidecar version + model name +
+   vector dim + per-language corpus hash).
+3. **Hybrid blend**: pool-normalised `0.55 * lexical + 0.45 *
+   semantic`, multiplied by a level prior (substantive degrees +10 %,
+   1-week summer programs −15 %; flipped when the query explicitly
+   asks for short courses).
+
+Mode selection (`LASALLE_RANKER_MODE` env var):
+- `hybrid` (default)
+- `lexical` / `bm25` (BM25 + synonyms, no embeddings)
+- `semantic` (cosine only)
+- `token_overlap` (legacy; ablation)
+
+The agno tool wraps a single new endpoint:
+
+```python
+api.retrieve_program_candidates(
+    query, lang="en", filters=None, top_k=10, mode=None,
+)
+```
+
+Per-call `mode=` overrides the env var and never leaks state. The agno
+tool stays thin: the LLM only sees the typed structured payload, never
+markdown or vectors directly.
+
+**Operational hardening:**
+- `_semantic_meta()` runs a startup compatibility check —
+  `sidecar_version`, `model_name`, `vector_dim` must match what the
+  running code expects. Mismatch → log a warning and fall back to
+  lexical-only.
+- Embeddings load lazily on first retrieval call (no penalty if the
+  agent only browses indexes).
+- Memory ceiling test (`tests/test_search_ops.py`): 100 sequential
+  hybrid queries must keep RSS under 700 MB.
+
+### Build pipeline addition
+
+Add to the existing `scripts/build_wiki.py` flow:
+
+```bash
+uv run python -m scripts.build_wiki extract     # Phase 3
+uv run python -m scripts.build_wiki pair
+uv run python -m scripts.build_wiki render
+uv run python -m scripts.build_wiki index
+uv run python -m scripts.build_embeddings       # Phase 4 (new)
+uv run python -m scripts.build_wiki verify
+```
 
 ### CLI
 

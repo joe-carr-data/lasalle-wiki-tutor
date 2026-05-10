@@ -158,6 +158,40 @@ matching. Lowered the verify threshold to 50%; the low-confidence
 unpaired programs land in `meta/pairings_unresolved.md` (in plan)
 for human triage.
 
+## Phase 4: token-overlap search has obvious failure modes for student queries
+
+Plain token overlap on title/tags/slug fails any query that doesn't share
+a literal keyword with the catalog: `machine learning`, `hacking`,
+`startup`, `game development` all returned 0 hits or wrong programs.
+**Don't ship a token-overlap baseline as the student-facing search.**
+At minimum: BM25 over weighted fields (title, tags, area, body) +
+synonym expansion + a small "type prior" so cute 1-week summer programs
+don't outrank 4-year bachelors on bare-keyword queries like "AI".
+
+## Phase 4: hybrid lexical + semantic, both pool-normalised
+
+After BM25 alone, queries like *"I want to build robots"* still missed
+the obvious match (Bachelor in Electronic Engineering — Minor in
+Robotics) because BM25 over-rewards a rare keyword like `build`
+appearing in a tangential title. Adding a Model2Vec semantic layer
+fixed it — but **only after pool-normalising both lexical and semantic
+scores to [0, 1]** before blending. Without normalising, raw BM25
+scores swamped the semantic signal. Final blend: `0.55 * lex + 0.45 *
+sem`, plus a level prior. The blend weights are tunable per query
+class but this default works for our 7 K-doc bilingual catalog.
+
+## Phase 4: Model2Vec is genuinely tiny — 8 MB sidecar for the whole catalog
+
+For 357 programs in EN + 178 in ES, the precomputed L2-normalised
+float32 vectors are ~360 KB total on disk. Index loads instantly,
+query embedding is ~5 ms, cosine-similarity over the whole corpus is
+a single dot product. No torch, no transformers, no GPU. Fits inside
+the t3.micro budget with hundreds of MB to spare for FastAPI + agno.
+**Always precompute embeddings offline and ship a versioned sidecar
+(`wiki/meta/embeddings_meta.json`) with model name + corpus hash so a
+stale sidecar fails the startup health check loudly instead of
+returning garbage.**
+
 ## The Chrome MCP blocks JS that reads cookie/query-string strings
 
 We hit "BLOCKED: Cookie/query string data" when our exploration JS
