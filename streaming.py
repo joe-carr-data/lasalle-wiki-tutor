@@ -43,7 +43,7 @@ def _utc_now() -> datetime:
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -54,6 +54,7 @@ from starlette.responses import Response
 from agent import WikiTutorAgent, WikiTutorAgentConfig
 from config.settings import PROJECT_SETTINGS
 from core.base_sse_adapter import BaseSSEAdapter
+from core.auth import require_access_token
 from core.cancellation_registry import (
     cancel_query,
     register_query,
@@ -65,6 +66,7 @@ from core.turn_trace_recorder import TurnTraceRecorder
 from events import AgentEvent, EventType
 from events.models import AgentRole
 from fastapi_sse_contract import format_sse
+from streaming_auth import router as auth_router
 from streaming_conversations import router as conversations_router
 
 logger = logging.getLogger(__name__)
@@ -398,6 +400,7 @@ app.add_middleware(
 # starlette's GZipMiddleware (it skips streaming responses with
 # `text/event-stream`).
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.include_router(auth_router)
 app.include_router(conversations_router)
 
 
@@ -406,7 +409,10 @@ async def health() -> dict[str, Any]:
     return {"status": "ok", "assistant": PROJECT_SETTINGS.ASSISTANT_NAME}
 
 
-@app.post("/api/wiki-tutor/v1/query/stream")
+@app.post(
+    "/api/wiki-tutor/v1/query/stream",
+    dependencies=[Depends(require_access_token)],
+)
 async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
     session_id = request.session_id or str(uuid.uuid4())
     query_id = request.query_id or str(uuid.uuid4())
@@ -439,7 +445,10 @@ async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
     )
 
 
-@app.post("/api/wiki-tutor/v1/query/cancel")
+@app.post(
+    "/api/wiki-tutor/v1/query/cancel",
+    dependencies=[Depends(require_access_token)],
+)
 async def query_cancel(request: CancelRequest) -> dict[str, Any]:
     found = await cancel_query(request.query_id)
     if not found:

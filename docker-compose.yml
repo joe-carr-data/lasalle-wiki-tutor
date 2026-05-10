@@ -1,0 +1,58 @@
+# LaSalle Wiki Tutor — single-host compose stack.
+#
+# Two services on the same Docker network:
+#   - mongo   MongoDB 6, persisted to a named volume
+#   - app     The wiki-tutor FastAPI service, built from ./Dockerfile
+#
+# Bring it up:
+#   docker compose --env-file .env up -d --build
+#
+# The app reaches Mongo at `mongodb://mongo:27017` (the default in the
+# Dockerfile); the volume keeps conversation history across container
+# restarts. TLS termination + public exposure live one layer up — front
+# this with Caddy / nginx / an ALB on the host.
+
+services:
+  mongo:
+    image: mongo:6.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    # Bind to localhost only — the app talks to it over the docker network,
+    # nothing on the public internet should ever hit Mongo directly.
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lasalle-wiki-tutor:latest
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      # Required — passed through from the host .env or shell.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      WIKI_TUTOR_ACCESS_TOKEN: ${WIKI_TUTOR_ACCESS_TOKEN:?WIKI_TUTOR_ACCESS_TOKEN is required}
+      # Optional — defaults from the Dockerfile work for the compose network.
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-lasalle_catalog_assistant}
+      ASSISTANT_NAME: ${ASSISTANT_NAME:-LaSalle Wiki Tutor}
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Bind to localhost; let Caddy / nginx / ALB on the host terminate TLS
+    # and forward to 127.0.0.1:8000. Public exposure of the app port is a
+    # foot-gun (CORS is `*` for the demo).
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  mongo-data:

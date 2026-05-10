@@ -1,3 +1,4 @@
+import { authedFetch } from "../lib/auth";
 import type { SseEvent, StreamRequestBody } from "./types";
 
 const STREAM_ENDPOINT = "/api/wiki-tutor/v1/query/stream";
@@ -47,7 +48,7 @@ export async function* streamQuery(
   body: StreamRequestBody,
   signal: AbortSignal,
 ): AsyncIterable<SseEvent> {
-  const res = await fetch(STREAM_ENDPOINT, {
+  const res = await authedFetch(STREAM_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

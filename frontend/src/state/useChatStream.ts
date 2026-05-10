@@ -1,5 +1,6 @@
 import { startTransition, useCallback, useReducer, useRef } from "react";
 import { streamQuery, StreamError } from "../api/stream";
+import { authedFetch } from "../lib/auth";
 import type { SseEvent, SseEventName, StreamRequestBody } from "../api/types";
 
 // ─── Domain model ─────────────────────────────────────────────────────────
@@ -515,7 +516,7 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
       // Fire-and-forget — the SSE generator will yield `cancelled` once the
       // server picks it up. We don't await; if the network is gone, the
       // local AbortController already terminated the read so the UI advances.
-      void fetch("/api/wiki-tutor/v1/query/cancel", {
+      void authedFetch("/api/wiki-tutor/v1/query/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query_id: queryId }),

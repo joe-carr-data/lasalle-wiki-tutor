@@ -15,15 +15,20 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+from core.auth import require_access_token
 from core.conversations_store import get_store
 
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(prefix="/api/wiki-tutor/v1/conversations", tags=["conversations"])
+router = APIRouter(
+    prefix="/api/wiki-tutor/v1/conversations",
+    tags=["conversations"],
+    dependencies=[Depends(require_access_token)],
+)
 
 
 class ConversationRow(BaseModel):

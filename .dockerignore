@@ -1,0 +1,45 @@
+# Keep the build context lean — anything copied into the image flows through
+# the Docker daemon, and bigger contexts mean slower iteration.
+
+# Local virtualenvs / package caches
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Frontend artifacts (the Dockerfile rebuilds these from source)
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# VCS + IDE noise
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+.DS_Store
+.claude
+
+# Local secrets — never bake into images. Pass via runtime env instead.
+.env
+.env.*
+!.env.example
+
+# Project-local docs / kits (not needed at runtime)
+docs
+La\ Salle\ Wiki\ Tutor\ Design\ System
+
+# Raw scrape inputs — only the rendered wiki/ tree is needed at runtime.
+data
+
+# Test scaffolding
+tests
+**/test_*.py
+**/*_test.py
+
+# Build outputs from previous local Docker runs
+Dockerfile.*~
+docker-compose.override.yml

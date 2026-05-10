@@ -910,3 +910,100 @@ button { font: inherit; }
 
 .ico-sm { width: 14px; height: 14px; }
 .ico { width: 18px; height: 18px; }
+
+/* ---------- Access gate ---------- */
+.gate-backdrop {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, var(--bone) 0%, var(--paper) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 200;
+}
+.gate-card {
+  width: min(420px, 100%);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--bg-brand-soft);
+  color: var(--brand-700);
+  margin-bottom: 4px;
+}
+.gate-icon svg { width: 22px; height: 22px; }
+.gate-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  color: var(--fg-1);
+}
+.gate-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-3);
+}
+.gate-input {
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--fg-1);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.gate-input:focus {
+  border-color: var(--brand-400);
+  box-shadow: var(--ring-brand);
+}
+.gate-input:disabled {
+  background: var(--bg-3);
+  color: var(--fg-3);
+  cursor: not-allowed;
+}
+.gate-error {
+  font-size: 13px;
+  color: var(--danger);
+  background: #fff7f5;
+  border: 1px solid #f3c2bb;
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+}
+.gate-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--brand-600);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.gate-submit:hover:not(:disabled) { background: var(--brand-700); }
+.gate-submit:disabled {
+  background: var(--border-strong);
+  cursor: not-allowed;
+}

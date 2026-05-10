@@ -1,5 +1,8 @@
-// REST client for /api/wiki-tutor/v1/conversations. Plain fetch — no
-// extra abstraction. Backend lives in streaming_conversations.py.
+// REST client for /api/wiki-tutor/v1/conversations. All calls go through
+// `authedFetch` so they carry the X-Access-Token header. Backend lives in
+// streaming_conversations.py.
+
+import { authedFetch } from "../lib/auth";
 
 const BASE = "/api/wiki-tutor/v1/conversations";
 
@@ -71,7 +74,7 @@ export async function listConversations(
   userId: string,
   signal?: AbortSignal,
 ): Promise<ConversationSummary[]> {
-  const res = await fetch(`${BASE}?user_id=${encodeURIComponent(userId)}`, {
+  const res = await authedFetch(`${BASE}?user_id=${encodeURIComponent(userId)}`, {
     signal,
   });
   if (!res.ok) await parseError(res, `list failed (${res.status})`);
@@ -84,7 +87,7 @@ export async function getConversation(
   userId: string,
   signal?: AbortSignal,
 ): Promise<ConversationDetail> {
-  const res = await fetch(
+  const res = await authedFetch(
     `${BASE}/${encodeURIComponent(id)}?user_id=${encodeURIComponent(userId)}`,
     { signal },
   );
@@ -97,7 +100,7 @@ export async function renameConversation(
   title: string,
   expectedVersion: number,
 ): Promise<{ id: string; title: string; version: number; updated_at: string }> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
+  const res = await authedFetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, expected_version: expectedVersion }),
@@ -112,7 +115,7 @@ export async function renameConversation(
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
+  const res = await authedFetch(`${BASE}/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!res.ok && res.status !== 204) {
