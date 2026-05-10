@@ -53,6 +53,7 @@ export interface ChatStreamState {
 
 type Action =
   | { type: "session/start"; sessionId: string }
+  | { type: "session/reset"; sessionId: string }
   | { type: "turn/start"; turn: Turn }
   | { type: "sse"; turnId: string; event: SseEvent }
   | { type: "turn/error"; turnId: string; message: string }
@@ -90,6 +91,13 @@ function reducer(state: ChatStreamState, action: Action): ChatStreamState {
   switch (action.type) {
     case "session/start":
       return { ...state, sessionId: action.sessionId };
+
+    case "session/reset":
+      // Hard reset for "New chat" — drop turns, clear streaming flag.
+      return {
+        ...initialState,
+        sessionId: action.sessionId,
+      };
 
     case "turn/start":
       return {
@@ -512,7 +520,8 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
     abortRef.current?.abort();
     sessionIdRef.current = sessionId;
     lastSendRef.current = null;
-    dispatch({ type: "session/start", sessionId });
+    activeQueryIdRef.current = null;
+    dispatch({ type: "session/reset", sessionId });
   }, []);
 
   const hydrate = useCallback((sessionId: string, _turns: Turn[]) => {
@@ -522,7 +531,8 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
     abortRef.current?.abort();
     sessionIdRef.current = sessionId;
     lastSendRef.current = null;
-    dispatch({ type: "session/start", sessionId });
+    activeQueryIdRef.current = null;
+    dispatch({ type: "session/reset", sessionId });
   }, []);
 
   return { state, send, cancel, retry, resetSession, hydrate };
