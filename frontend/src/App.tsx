@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Shell } from "./components/Shell";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
@@ -44,13 +44,21 @@ export default function App() {
 
   // After every successful turn, refresh the sidebar so a brand-new
   // conversation row appears with its server-assigned title.
+  //
+  // We hold `conversations` in a ref so the effect can read its current
+  // callbacks without depending on the hook's return-object identity —
+  // that object is a fresh literal every render, and listing it as a
+  // dep used to re-fire the effect on every render, hammering the API
+  // in a tight loop.
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
   const lastTurn = state.turns[state.turns.length - 1];
   const lastDoneTurnId = lastTurn?.status === "done" ? lastTurn.id : null;
   useEffect(() => {
     if (!lastDoneTurnId) return;
-    void conversations.refresh();
-    if (state.sessionId) conversations.setActive(state.sessionId);
-  }, [lastDoneTurnId, conversations, state.sessionId]);
+    void conversationsRef.current.refresh();
+    if (state.sessionId) conversationsRef.current.setActive(state.sessionId);
+  }, [lastDoneTurnId, state.sessionId]);
 
   function handleSend(text: string) {
     const detected = detectLang(text);
