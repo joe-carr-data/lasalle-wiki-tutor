@@ -1,4 +1,5 @@
-import { MessageSquare, Plus } from "./icons";
+import { Plus } from "./icons";
+import { ConversationRow } from "./ConversationRow";
 
 export interface ConversationListItem {
   id: string;
@@ -9,18 +10,24 @@ interface SidebarProps {
   conversations: ConversationListItem[];
   activeId: string | null;
   lang: "en" | "es";
+  loading?: boolean;
   onSelect: (id: string) => void;
   onNewChat: () => void;
   onLangChange: (lang: "en" | "es") => void;
+  onRename: (id: string, title: string) => void;
+  onRequestDelete: (id: string) => void;
 }
 
 export function Sidebar({
   conversations,
   activeId,
   lang,
+  loading,
   onSelect,
   onNewChat,
   onLangChange,
+  onRename,
+  onRequestDelete,
 }: SidebarProps) {
   return (
     <aside className="sidebar">
@@ -33,12 +40,14 @@ export function Sidebar({
       </div>
 
       <button className="sb-new" onClick={onNewChat}>
-        <Plus className="ico-sm" /> New chat
+        <Plus className="ico-sm" /> {lang === "es" ? "Nueva conversación" : "New chat"}
       </button>
 
-      <div className="sb-section">Conversations</div>
+      <div className="sb-section">
+        {lang === "es" ? "Conversaciones" : "Conversations"}
+      </div>
       <div className="sb-list">
-        {conversations.length === 0 && (
+        {!loading && conversations.length === 0 && (
           <div className="sb-empty">
             {lang === "es"
               ? "Sin conversaciones todavía."
@@ -46,14 +55,15 @@ export function Sidebar({
           </div>
         )}
         {conversations.map((c) => (
-          <button
+          <ConversationRow
             key={c.id}
-            className={`sb-item${c.id === activeId ? " active" : ""}`}
-            onClick={() => onSelect(c.id)}
-          >
-            <MessageSquare className="ico-sm" />
-            <span className="sb-item-title">{c.title}</span>
-          </button>
+            id={c.id}
+            title={c.title}
+            active={c.id === activeId}
+            onSelect={onSelect}
+            onRename={onRename}
+            onRequestDelete={onRequestDelete}
+          />
         ))}
       </div>
 
