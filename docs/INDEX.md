@@ -7,9 +7,9 @@ topic. Always start here when looking for project context.
 
 ## Project status
 
-Phase: **5 – Frontend chat UI** (Vite + React TS bundle served by FastAPI;
-sidebar history, replay with reasoning, LLM-polished titles, prod hardening)
-Next phase: **demo deployment to t3.micro** (out of plan scope)
+Phase: **6 – Deployment** (shared-token gate, Docker image, AWS t3.micro
++ Caddy recipe, wiki corpus shipped as a GitHub Release asset)
+Next phase: actually-stand-up the EC2 and hand the token to evaluators
 
 ## Target
 
@@ -29,6 +29,7 @@ CMS: Drupal
 | 04 | [`04-knowledge-base-map.md`](./04-knowledge-base-map.md) | What's in the corpus, what's useful for students, content tiers | Current |
 | 05 | [`05-wiki-architecture.md`](./05-wiki-architecture.md) | Phase 3 wiki layout, build pipeline, and read-only API (`catalog_wiki_api` v1) | Current |
 | 06 | [`06-frontend.md`](./06-frontend.md) | Phase 5 frontend chat UI, conversations REST API, prod hardening | Current |
+| 07 | [`07-deploy.md`](./07-deploy.md) | Phase 6 — bootstrap a fresh clone, AWS t3.micro + Caddy, wiki release artifact | Current |
 | –  | [`aha.md`](./aha.md) | Short list of "aha" moments / lessons learned. Read this first when resuming work. | Current |
 
 ## Archive

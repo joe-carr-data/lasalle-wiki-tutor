@@ -31,3 +31,6 @@ wiki/
 frontend/node_modules/
 
 .claude/
+
+# Local cache for fetch_wiki / publish_wiki tarballs
+.cache/
