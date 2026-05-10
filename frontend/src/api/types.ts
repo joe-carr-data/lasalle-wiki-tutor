@@ -150,5 +150,6 @@ export interface StreamRequestBody {
   session_id: string;
   query_id: string;
   user_id?: string;
+  lang?: "en" | "es";
   reasoning_effort?: "low" | "medium" | "high";
 }

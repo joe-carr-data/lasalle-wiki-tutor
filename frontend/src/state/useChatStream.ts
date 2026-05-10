@@ -395,6 +395,7 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
         session_id: sessionId,
         query_id: queryId,
         user_id: userId,
+        lang,
         reasoning_effort: reasoningEffort,
       };
       await runStream(body, turn);

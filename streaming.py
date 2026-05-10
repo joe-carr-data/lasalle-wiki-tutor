@@ -52,9 +52,11 @@ from core.cancellation_registry import (
     register_query,
     unregister_query,
 )
+from core.conversations_store import close_store, init_store
 from events import AgentEvent, EventType
 from events.models import AgentRole
 from fastapi_sse_contract import format_sse
+from streaming_conversations import router as conversations_router
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ class WikiTutorQueryRequest(BaseModel):
     session_id: Optional[str] = None
     query_id: Optional[str] = None
     user_id: Optional[str] = None
+    lang: Optional[str] = None  # "en" | "es"; client detects from text
     verbosity: Optional[int] = 3
     reasoning_effort: Optional[str] = None  # "none" | "low" | "medium" | "high"
 
@@ -144,6 +147,7 @@ async def stream_query(
     session_id: str,
     query_id: str,
     user_id: str,
+    lang: str,
     verbosity: int,
     reasoning_effort: Optional[str],
     cancellation_event: asyncio.Event,
@@ -261,6 +265,22 @@ async def stream_query(
             except Exception as exc:
                 logger.error("[wiki-sse] response.final error: %s", exc, exc_info=True)
 
+            # Surface this conversation in the sidebar. Idempotent — first
+            # turn inserts with a heuristic title, later turns just bump
+            # updated_at. Failures are non-fatal; chat still works.
+            if user_id:
+                try:
+                    from core.conversations_store import get_store
+
+                    await get_store().ensure_meta(
+                        session_id=session_id,
+                        user_id=user_id,
+                        first_user_message=query,
+                        lang=lang or "en",
+                    )
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("[wiki-sse] ensure_meta failed: %s", exc)
+
             yield format_sse(adapter.create_session_end())
 
     except GeneratorExit:
@@ -283,9 +303,17 @@ async def stream_query(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """App lifecycle hook (placeholder for future MongoDB/MCP startup)."""
+    """App lifecycle hook — initializes the conversations Mongo store."""
     logger.info("LaSalle Wiki Tutor streaming starting up.")
+    try:
+        await init_store()
+        logger.info("Conversations Mongo store ready.")
+    except Exception as exc:  # pragma: no cover
+        # Don't crash the API if Mongo is down — chat still works without
+        # the sidebar. The store getter will raise per-request instead.
+        logger.warning("Conversations Mongo store unavailable: %s", exc)
     yield
+    await close_store()
     logger.info("LaSalle Wiki Tutor streaming shutting down.")
 
 
@@ -301,6 +329,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(conversations_router)
 
 
 @app.get("/health")
@@ -321,6 +350,7 @@ async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
                 session_id=session_id,
                 query_id=query_id,
                 user_id=request.user_id or "",
+                lang=request.lang or "en",
                 verbosity=request.verbosity or 3,
                 reasoning_effort=request.reasoning_effort,
                 cancellation_event=cancellation_event,
