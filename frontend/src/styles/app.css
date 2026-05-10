@@ -25,6 +25,13 @@ textarea:focus-visible {
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
+/* Defensive: a single overflowing element (long URL, JSON arg blob,
+ * unbroken token) must never let the page itself scroll sideways. The
+ * app shell is fixed-width-by-design; horizontal scroll only happens
+ * inside specific containers that opt in (.md-table-wrap, .composer
+ * textarea). `overflow-x: clip` is preferred over `hidden` because it
+ * doesn't create a new scroll context that breaks position: sticky. */
+html, body { overflow-x: clip; }
 body {
   font-family: var(--font-sans);
   color: var(--fg-1);
@@ -413,6 +420,11 @@ button { font: inherit; }
   font-size: 13px;
   color: var(--fg-2);
   transition: all var(--dur-base) var(--ease-out);
+  /* Don't let a child (long tool name, JSON arg blob) push the row
+   * past its parent's width — that's the original cause of the
+   * sideways-scroll-the-whole-page bug. */
+  max-width: 100%;
+  min-width: 0;
 }
 .tl-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -432,8 +444,30 @@ button { font: inherit; }
   0%, 100% { box-shadow: 0 0 0 0 rgba(91,168,218,.55); }
   50%       { box-shadow: 0 0 0 6px rgba(91,168,218,0); }
 }
-.tl-tool { font-family: var(--font-mono); color: var(--brand-700); font-size: 12px; font-weight: 500; }
-.tl-arg  { color: var(--fg-3); font-size: 12px; }
+.tl-tool {
+  font-family: var(--font-mono);
+  color: var(--brand-700);
+  font-size: 12px;
+  font-weight: 500;
+  /* Long tool names shouldn't push siblings out of the bubble. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tl-arg {
+  color: var(--fg-3);
+  font-size: 12px;
+  /* JSON arg blobs are one long unbroken string. Force breaks anywhere
+   * so they don't push the whole timeline row past the viewport. */
+  min-width: 0;
+  flex: 1 1 100%;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  /* When wrapped to its own row (because of flex: 1 1 100%) we want the
+   * leading "· " separator to align with the tool name on the row above. */
+  padding-left: 22px;
+  margin-top: 2px;
+}
 .tl-meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); }
 
 /* ---------- Program card ---------- */
@@ -616,6 +650,10 @@ button { font: inherit; }
 .tl-tool-row {
   flex-wrap: wrap;
   row-gap: 4px;
+  /* Tool rows are flex containers; without min-width: 0 a long child can
+   * push the row past its parent's width. */
+  min-width: 0;
+  max-width: 100%;
 }
 .tl-tool-icon {
   color: var(--brand-600);
