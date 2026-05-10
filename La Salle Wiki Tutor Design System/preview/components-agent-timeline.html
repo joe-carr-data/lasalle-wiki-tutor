@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.timeline { display: flex; flex-direction: column; gap: 6px; font-family: var(--font-sans); }
+.step { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--white); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--tuatara); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
+.step.done .dot { background: var(--storm-dust); }
+.step.active { border-color: var(--ls-blue); background: var(--ls-blue-soft); }
+.step.active .dot { background: var(--ls-blue); animation: pulse 1.2s ease-in-out infinite; }
+.step .tool { font-family: var(--font-mono); color: var(--ls-blue-press); font-size: 12.5px; }
+.step .meta { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79,168,216,.55); }
+  50% { box-shadow: 0 0 0 6px rgba(79,168,216,0); }
+}
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); margin-bottom: 10px; }
+</style>
+</head><body>
+<div class="card">
+  <div class="cap">Agent timeline — thinking → tool → done (LS Blue marks tool use)</div>
+  <div class="timeline">
+    <div class="step done"><div class="dot"></div>Detected language <span class="tool">en</span><span class="meta">12 ms</span></div>
+    <div class="step done"><div class="dot"></div><span class="tool">search_programs</span> · "AI bachelor english"<span class="meta">218 ms · 4 hits</span></div>
+    <div class="step active"><div class="dot"></div><span class="tool">get_program</span> · en/bachelor-artificial-intelligence<span class="meta">running</span></div>
+    <div class="step"><div class="dot"></div>Compose answer</div>
+  </div>
+</div>
+</body></html>

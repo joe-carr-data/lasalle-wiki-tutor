@@ -1,0 +1,54 @@
+/* Shared chrome for design-system preview cards.
+   Each card targets ~700px wide; height varies. */
+@import url("../colors_and_type.css");
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--white);
+  color: var(--tuatara);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
+.card {
+  width: 700px;
+  padding: 28px;
+  background: var(--white);
+}
+
+.row { display: flex; align-items: center; }
+.swatch {
+  width: 100%;
+  aspect-ratio: 1.6 / 1;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(0,0,0,.04);
+  position: relative;
+  overflow: hidden;
+}
+.swatch.bordered { border: 1px solid var(--border); }
+.swatch .label {
+  position: absolute;
+  left: 10px; bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(255,255,255,.92);
+  color: var(--tuatara);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.swatch.dark .label { background: rgba(0,0,0,.55); color: #fff; }
+.swatch .name {
+  position: absolute;
+  left: 10px; top: 8px;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--tuatara);
+}
+.swatch.dark .name { color: #fff; }
+.cap {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--storm-dust);
+}

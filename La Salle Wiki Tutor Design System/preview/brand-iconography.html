@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.cell { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+.cell .ico { width: 28px; height: 28px; color: var(--ink-800); }
+.cell .name { font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted); }
+.cell .label { font-family: var(--font-sans); font-size: 11px; font-weight: 600; color: var(--ink-900); }
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); margin-bottom: 10px; }
+</style>
+</head><body>
+<div class="card">
+  <div class="cap">Program-area iconography — Lucide (substitute set)</div>
+  <div class="grid">
+    <div class="cell"><i class="ico" data-lucide="brain-circuit"></i><div class="label">AI / Data</div><div class="name">brain-circuit</div></div>
+    <div class="cell"><i class="ico" data-lucide="shield"></i><div class="label">Cybersec</div><div class="name">shield</div></div>
+    <div class="cell"><i class="ico" data-lucide="clapperboard"></i><div class="label">Animation</div><div class="name">clapperboard</div></div>
+    <div class="cell"><i class="ico" data-lucide="building"></i><div class="label">Architecture</div><div class="name">building</div></div>
+    <div class="cell"><i class="ico" data-lucide="briefcase"></i><div class="label">Business</div><div class="name">briefcase</div></div>
+    <div class="cell"><i class="ico" data-lucide="code"></i><div class="label">CS</div><div class="name">code</div></div>
+    <div class="cell"><i class="ico" data-lucide="radio-tower"></i><div class="label">Telecom</div><div class="name">radio-tower</div></div>
+    <div class="cell"><i class="ico" data-lucide="heart-pulse"></i><div class="label">Health</div><div class="name">heart-pulse</div></div>
+    <div class="cell"><i class="ico" data-lucide="book-open"></i><div class="label">Philosophy</div><div class="name">book-open</div></div>
+    <div class="cell"><i class="ico" data-lucide="clipboard-list"></i><div class="label">Project Mgmt</div><div class="name">clipboard-list</div></div>
+  </div>
+  <script>lucide.createIcons();</script>
+</div>
+</body></html>

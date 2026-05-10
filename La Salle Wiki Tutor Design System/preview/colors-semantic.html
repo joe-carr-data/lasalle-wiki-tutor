@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.swatch { aspect-ratio: 1.5 / 1; }
+.note { margin-top: 12px; font-size: 13px; color: var(--storm-dust); }
+</style>
+</head><body>
+<div class="card">
+  <div class="grid">
+    <div class="swatch dark" style="background:var(--success)"><div class="name">Success</div><div class="label">#2f9e6e</div></div>
+    <div class="swatch dark" style="background:var(--warning)"><div class="name">Warning</div><div class="label">#c89211</div></div>
+    <div class="swatch dark" style="background:var(--danger)"><div class="name">Danger</div><div class="label">#b3392c</div></div>
+  </div>
+  <div class="note">Status colors are intentionally desaturated so LS Blue stays the visual lead.</div>
+</div>
+</body></html>

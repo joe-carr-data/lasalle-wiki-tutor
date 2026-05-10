@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+body { background: var(--d-base); }
+.card { background: var(--d-base); }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.swatch { aspect-ratio: 1.45 / 1; border-radius: var(--r-md); position: relative; overflow: hidden; }
+.swatch .name { position: absolute; left: 10px; top: 8px; font-family: var(--font-sans); font-weight: 600; font-size: 11px; color: #fff; }
+.swatch .label { position: absolute; left: 10px; bottom: 8px; font-family: var(--font-mono); font-size: 11px; background: rgba(255,255,255,.10); color: #fff; padding: 2px 6px; border-radius: 4px; }
+.note { margin-top: 14px; font-size: 13px; color: var(--d-text-2); line-height: 1.55; }
+</style>
+</head><body>
+<div class="card">
+  <div class="grid">
+    <div class="swatch" style="background:var(--d-base); border:1px solid var(--d-border);"><div class="name">Base</div><div class="label">#1A1A1A</div></div>
+    <div class="swatch" style="background:var(--d-elev)"><div class="name">Elevated</div><div class="label">#252525</div></div>
+    <div class="swatch" style="background:#2e2e2e"><div class="name">Hover</div><div class="label">#2E2E2E</div></div>
+    <div class="swatch" style="background:var(--d-border)"><div class="name">Border</div><div class="label">#333333</div></div>
+    <div class="swatch" style="background:var(--d-text); color:var(--tuatara);"><div class="name" style="color:var(--tuatara)">Text</div><div class="label" style="background:rgba(0,0,0,.06); color:var(--tuatara)">#F2F2F2</div></div>
+    <div class="swatch" style="background:var(--d-text-2)"><div class="name" style="color:var(--tuatara)">Text 2</div><div class="label" style="background:rgba(0,0,0,.10); color:var(--tuatara)">#B5B5B5</div></div>
+    <div class="swatch" style="background:var(--ls-blue)"><div class="name">LS Blue</div><div class="label">#4FA8D8</div></div>
+    <div class="swatch" style="background:rgba(79,168,216,.14); border:1px solid rgba(79,168,216,.3); color:var(--ls-blue)"><div class="name" style="color:var(--ls-blue)">Blue tint</div><div class="label" style="background:rgba(0,0,0,.30); color:#fff">12%</div></div>
+  </div>
+  <div class="note">Dark mode keeps the same LS Blue accent — only the gray stack inverts.</div>
+</div>
+</body></html>

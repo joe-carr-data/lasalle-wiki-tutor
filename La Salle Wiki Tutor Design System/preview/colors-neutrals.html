@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.swatch { aspect-ratio: 1.45 / 1; border-radius: var(--r-md); }
+.note { margin-top: 14px; font-size: 13px; color: var(--storm-dust); }
+</style>
+</head><body>
+<div class="card">
+  <div class="grid">
+    <div class="swatch bordered" style="background:var(--white)"><div class="name">White</div><div class="label">#FFFFFF</div></div>
+    <div class="swatch bordered" style="background:var(--elev-1)"><div class="name">Elevated</div><div class="label">#FAFAFA</div></div>
+    <div class="swatch bordered" style="background:var(--hover)"><div class="name">Hover</div><div class="label">#F2F2F2</div></div>
+    <div class="swatch" style="background:var(--border)"><div class="name">Border</div><div class="label">#E5E5E5</div></div>
+    <div class="swatch dark" style="background:var(--storm-dust)"><div class="name">Storm Dust</div><div class="label">#6F6F6E</div></div>
+    <div class="swatch dark" style="background:var(--tuatara)"><div class="name">Tuatara</div><div class="label">#3C3C3B</div></div>
+    <div class="swatch dark" style="background:var(--d-elev)"><div class="name">D · elev</div><div class="label">#252525</div></div>
+    <div class="swatch dark" style="background:var(--d-base)"><div class="name">D · base</div><div class="label">#1A1A1A</div></div>
+  </div>
+  <div class="note">Gray dominates. Tuatara is the primary text color; Storm Dust is dividers + secondary text; the four light grays form the surface stack.</div>
+</div>
+</body></html>

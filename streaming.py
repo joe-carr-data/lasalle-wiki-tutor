@@ -36,9 +36,12 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Optional
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from agent import WikiTutorAgent, WikiTutorAgentConfig
@@ -343,3 +346,55 @@ async def query_cancel(request: CancelRequest) -> dict[str, Any]:
     if not found:
         raise HTTPException(status_code=404, detail="query_id not found")
     return {"cancelled": True, "query_id": request.query_id}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#                       Static frontend (Phase 5)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# The Vite-built bundle lives at frontend/dist/. Mount it as:
+#   - /assets/*  → hashed JS/CSS chunks (long immutable cache)
+#   - /          → bundled index.html (no-cache; SPA entrypoint)
+#
+# When the bundle is missing (e.g. a developer runs FastAPI without a
+# build) we keep the API endpoints alive and serve a small note at /.
+# In dev, the frontend is normally served by Vite on :5173 with a /api
+# proxy back to this process — those clients never hit /.
+
+_FRONTEND_DIST = Path(__file__).resolve().parent / "frontend" / "dist"
+_FRONTEND_INDEX = _FRONTEND_DIST / "index.html"
+_FRONTEND_ASSETS = _FRONTEND_DIST / "assets"
+
+
+def _index_response() -> FileResponse:
+    """Serve the SPA shell with no-cache so redeploys roll out cleanly."""
+    return FileResponse(
+        _FRONTEND_INDEX,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
+if _FRONTEND_ASSETS.exists():
+    # Hashed assets — content-addressed by Vite, safe to cache forever.
+    app.mount(
+        "/assets",
+        StaticFiles(directory=_FRONTEND_ASSETS),
+        name="frontend-assets",
+    )
+
+if _FRONTEND_INDEX.exists():
+    @app.get("/", include_in_schema=False)
+    async def frontend_root() -> FileResponse:  # type: ignore[no-redef]
+        return _index_response()
+else:
+    @app.get("/", include_in_schema=False)
+    async def frontend_root_missing() -> dict[str, Any]:  # type: ignore[no-redef]
+        return {
+            "status": "no-frontend-bundle",
+            "hint": (
+                "Build the frontend with `cd frontend && npm install && "
+                "npm run build`, or run `npm run dev` in dev mode and "
+                "use http://localhost:5173 instead."
+            ),
+        }

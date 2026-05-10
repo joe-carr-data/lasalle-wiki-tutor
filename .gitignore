@@ -24,3 +24,8 @@ wiki/
 
 # IDE
 .idea/
+
+# Frontend build (Phase 5)
+# node_modules/ is ignored; frontend/dist IS committed so the t3.micro
+# demo deploy is `git pull && uv run uvicorn` with no Node toolchain.
+frontend/node_modules/

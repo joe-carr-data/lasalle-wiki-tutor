@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>LaSalle Catalog — Bachelor's Degree in Artificial Intelligence</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="Header.jsx"></script>
+  <script type="text/babel" src="ProgramHero.jsx"></script>
+  <script type="text/babel" src="SubPageTabs.jsx"></script>
+  <script type="text/babel" src="FactRail.jsx"></script>
+  <script type="text/babel" src="SyllabusYearList.jsx"></script>
+  <script type="text/babel" src="Footer.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const PROGRAM = {
+      id: "en/bachelor-artificial-intelligence",
+      eyebrowEN: ["Bachelor's degree", "AI & Data Science", "240 ECTS"],
+      eyebrowES: ["Grado", "IA y Ciencia de Datos", "240 ECTS"],
+      titleEN: "Bachelor's Degree in Artificial Intelligence",
+      titleES: "Grado en Inteligencia Artificial",
+      deckEN: "A four-year, on-site bachelor in Barcelona built around machine learning, data engineering, and applied AI — taught entirely in English.",
+      deckES: "Un grado de cuatro años, presencial en Barcelona, centrado en aprendizaje automático, ingeniería de datos e IA aplicada — íntegramente en inglés.",
+      tag: "Be Real, Be You",
+      facts: {
+        en: [
+          ["Modality", "On-site"],
+          ["Duration", "4 years"],
+          ["Credits", "240 ECTS", true],
+          ["Languages", "English"],
+          ["Start date", "September 2026"],
+          ["Location", "Barcelona"],
+          ["Issuing", "Universitat Ramon Llull"],
+        ],
+        es: [
+          ["Modalidad", "Presencial"],
+          ["Duración", "4 años"],
+          ["Créditos", "240 ECTS", true],
+          ["Idiomas", "Inglés"],
+          ["Inicio", "Septiembre 2026"],
+          ["Ubicación", "Barcelona"],
+          ["Título", "Universitat Ramon Llull"],
+        ],
+      },
+      years: [
+        {
+          year: 1, ects: 60,
+          subjects: [
+            { id: "ai101-introduction-to-ai",   name: "Introduction to Artificial Intelligence", ects: 6, kind: "Core" },
+            { id: "math-discrete-structures",   name: "Discrete Mathematics",                    ects: 6, kind: "Core" },
+            { id: "prog-fundamentals",          name: "Programming Fundamentals (Python)",        ects: 9, kind: "Core" },
+            { id: "stats-probability",          name: "Probability & Statistics",                 ects: 6, kind: "Core" },
+            { id: "linear-algebra",             name: "Linear Algebra",                           ects: 6, kind: "Core" },
+            { id: "calculus-i",                 name: "Calculus I",                               ects: 6, kind: "Core" },
+            { id: "ethics-tech-society",        name: "Ethics, Technology and Society",           ects: 3, kind: "Humanities" },
+          ],
+        },
+        {
+          year: 2, ects: 60,
+          subjects: [
+            { id: "data-structures-algorithms", name: "Data Structures & Algorithms",             ects: 6, kind: "Core" },
+            { id: "ml-foundations",             name: "Foundations of Machine Learning",          ects: 9, kind: "Core" },
+            { id: "databases-i",                name: "Databases",                                ects: 6, kind: "Core" },
+            { id: "calculus-ii-multivar",       name: "Calculus II — Multivariable",              ects: 6, kind: "Core" },
+            { id: "computer-systems",           name: "Computer Systems & OS",                    ects: 6, kind: "Core" },
+            { id: "software-engineering",       name: "Software Engineering",                     ects: 6, kind: "Core" },
+            { id: "data-vis-narrative",         name: "Data Visualization & Narrative",           ects: 3, kind: "Methods" },
+          ],
+        },
+        {
+          year: 3, ects: 60,
+          subjects: [
+            { id: "deep-learning",              name: "Deep Learning",                            ects: 9, kind: "Core" },
+            { id: "nlp",                        name: "Natural Language Processing",              ects: 6, kind: "Core" },
+            { id: "computer-vision",            name: "Computer Vision",                          ects: 6, kind: "Core" },
+            { id: "data-engineering",           name: "Data Engineering at Scale",                ects: 6, kind: "Core" },
+            { id: "reinforcement-learning",     name: "Reinforcement Learning",                   ects: 6, kind: "Elective" },
+            { id: "ai-product-design",          name: "AI Product Design",                        ects: 3, kind: "Methods" },
+          ],
+        },
+        {
+          year: 4, ects: 60,
+          subjects: [
+            { id: "applied-ai-capstone",        name: "Applied AI Capstone Project",              ects: 12, kind: "Capstone" },
+            { id: "mlops",                      name: "MLOps & Production Systems",               ects: 6,  kind: "Core" },
+            { id: "ai-safety-evaluation",       name: "AI Safety & Evaluation",                   ects: 6,  kind: "Core" },
+            { id: "internship",                 name: "Industry Internship",                      ects: 12, kind: "Practicum" },
+            { id: "tfg-thesis",                 name: "Final-Year Thesis",                        ects: 12, kind: "Thesis" },
+          ],
+        },
+      ],
+    };
+
+    const TABS_EN = [
+      { id: "overview",   label: "Overview" },
+      { id: "goals",      label: "Goals" },
+      { id: "syllabus",   label: "Syllabus" },
+      { id: "method",     label: "Methodology" },
+      { id: "faculty",    label: "Faculty" },
+      { id: "careers",    label: "Career opportunities" },
+      { id: "requirements", label: "Requirements" },
+    ];
+    const TABS_ES = [
+      { id: "overview",   label: "Presentación" },
+      { id: "goals",      label: "Objetivos" },
+      { id: "syllabus",   label: "Plan de estudios" },
+      { id: "method",     label: "Metodología" },
+      { id: "faculty",    label: "Profesorado" },
+      { id: "careers",    label: "Salidas profesionales" },
+      { id: "requirements", label: "Requisitos" },
+    ];
+
+    function App() {
+      const [lang, setLang] = useState("en");
+      const [tab, setTab] = useState("overview");
+      const tabs = lang === "en" ? TABS_EN : TABS_ES;
+      const facts = PROGRAM.facts[lang];
+      const eyebrow = lang === "en" ? PROGRAM.eyebrowEN : PROGRAM.eyebrowES;
+      const title = lang === "en" ? PROGRAM.titleEN : PROGRAM.titleES;
+      const deck = lang === "en" ? PROGRAM.deckEN : PROGRAM.deckES;
+
+      const onApply = () => alert(lang === "en" ? "Apply form (mock)" : "Formulario de inscripción (demo)");
+
+      return (
+        <>
+          <Header lang={lang} onLang={setLang} onApply={onApply} />
+          <ProgramHero eyebrow={eyebrow} title={title} deck={deck} tag={PROGRAM.tag} />
+
+          <div className="cat-body">
+            <div className="cat-main">
+              <SubPageTabs tabs={tabs} value={tab} onChange={setTab} />
+
+              {tab === "overview" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Overview" : "Presentación"}</h2>
+                  {lang === "en" ? (
+                    <>
+                      <p>The Bachelor's Degree in Artificial Intelligence is a four-year, on-site program at La Salle Campus Barcelona. It combines a rigorous mathematical and computer-science foundation with hands-on engineering of modern AI systems — from classical machine learning to deep learning, NLP, computer vision and applied AI products.</p>
+                      <p>You'll graduate with 240 ECTS, an industry internship, and a final-year capstone built end-to-end. The program is taught entirely in English and shares its first two years substantially with our Bachelor in Computer Engineering.</p>
+                      <h3>Why this program</h3>
+                      <ul>
+                        <li>Engineering-first: every model you study, you also ship.</li>
+                        <li>Industry-connected: capstones with real partners, MLOps in production.</li>
+                        <li>Ethics in every year, not as an afterthought.</li>
+                      </ul>
+                    </>
+                  ) : (
+                    <>
+                      <p>El Grado en Inteligencia Artificial es un programa de cuatro años, presencial, en La Salle Campus Barcelona. Combina una base sólida en matemáticas e informática con la ingeniería práctica de sistemas de IA modernos — desde el aprendizaje automático clásico hasta deep learning, PLN, visión por computador y productos de IA aplicada.</p>
+                      <p>Te graduarás con 240 ECTS, una práctica en empresa y un proyecto final desarrollado de extremo a extremo. El programa se imparte íntegramente en inglés y comparte buena parte de los dos primeros años con nuestro Grado en Ingeniería Informática.</p>
+                    </>
+                  )}
+                </section>
+              )}
+
+              {tab === "syllabus" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Syllabus" : "Plan de estudios"}</h2>
+                  <p style={{marginBottom: 28}}>
+                    {lang === "en"
+                      ? "240 ECTS over four years. Click any subject id below to open its catalog page."
+                      : "240 ECTS en cuatro años. Haz clic en el id de cualquier asignatura para abrir su ficha."}
+                  </p>
+                  <SyllabusYearList lang={lang} years={PROGRAM.years} />
+                </section>
+              )}
+
+              {tab === "goals" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Goals" : "Objetivos"}</h2>
+                  <p>{lang === "en"
+                    ? "Graduates of the program can design, build, evaluate and deploy AI systems responsibly. Specific learning outcomes are anchored to URL's competency framework and reviewed annually."
+                    : "Las personas tituladas son capaces de diseñar, construir, evaluar y desplegar sistemas de IA de forma responsable. Los resultados de aprendizaje se anclan al marco competencial de URL y se revisan cada año."}</p>
+                </section>
+              )}
+              {tab === "method" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Methodology" : "Metodología"}</h2>
+                  <p>{lang === "en"
+                    ? "Project-based learning, small cohorts, on-site labs. Every course pairs theory with a graded build."
+                    : "Aprendizaje basado en proyectos, grupos pequeños, laboratorios presenciales. Cada asignatura combina teoría con un proyecto evaluable."}</p>
+                </section>
+              )}
+              {tab === "faculty" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Faculty" : "Profesorado"}</h2>
+                  <p>{lang === "en" ? "Faculty list (mock — populated from the catalog API in production)." : "Lista de profesorado (demo — se rellena desde el catálogo en producción)."}</p>
+                </section>
+              )}
+              {tab === "careers" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Career opportunities" : "Salidas profesionales"}</h2>
+                  <ul>
+                    <li>{lang === "en" ? "Machine-learning engineer" : "Ingeniero/a de aprendizaje automático"}</li>
+                    <li>{lang === "en" ? "Data engineer / scientist" : "Ingeniero/a o científico/a de datos"}</li>
+                    <li>{lang === "en" ? "Applied AI researcher" : "Investigador/a de IA aplicada"}</li>
+                    <li>{lang === "en" ? "AI product manager" : "Product manager de IA"}</li>
+                  </ul>
+                </section>
+              )}
+              {tab === "requirements" && (
+                <section className="cat-section" style={{paddingTop: 36}}>
+                  <h2>{lang === "en" ? "Requirements" : "Requisitos"}</h2>
+                  <p>{lang === "en"
+                    ? "Spanish university entrance exam (Selectividad) or equivalent international qualification. English at C1 level."
+                    : "Selectividad o titulación internacional equivalente. Inglés C1."}</p>
+                </section>
+              )}
+            </div>
+
+            <FactRail
+              lang={lang}
+              id={PROGRAM.id.replace("en/", lang + "/")}
+              facts={facts}
+              ctaLabel={lang === "en" ? "Request information" : "Solicita información"}
+              onCta={onApply}
+            />
+          </div>
+
+          <Footer lang={lang} />
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

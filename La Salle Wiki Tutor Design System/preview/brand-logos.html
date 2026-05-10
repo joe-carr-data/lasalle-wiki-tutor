@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.logo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+.tile { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: flex; align-items: center; justify-content: center; height: 130px; }
+.tile.dark { background: var(--ink-900); }
+.tile img { max-width: 100%; max-height: 80px; }
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted); margin-top: 6px; }
+</style>
+</head><body>
+<div class="card">
+  <div class="logo-row">
+    <div>
+      <div class="tile"><img src="../assets/lasalle-wordmark.png" alt="LaSalle / Ramon Llull University"></div>
+      <div class="cap">wordmark · primary lockup</div>
+    </div>
+    <div>
+      <div class="tile" style="padding:0; overflow:hidden"><img src="../assets/lsbcn-mark.jpeg" alt="LSBCN" style="height:130px"></div>
+      <div class="cap">LSBCN mark · social / favicon</div>
+    </div>
+  </div>
+</div>
+</body></html>

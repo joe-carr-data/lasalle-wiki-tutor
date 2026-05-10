@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.card-prog { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; transition: all 150ms cubic-bezier(.22,.61,.36,1); }
+.card-prog:hover { border-color: var(--storm-dust); box-shadow: var(--shadow-2); }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .10em; text-transform: uppercase; color: var(--storm-dust); }
+.title { font-family: var(--font-sans); font-weight: 600; font-size: 19px; line-height: 1.25; color: var(--tuatara); margin: 6px 0 8px; letter-spacing: -.01em; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.fact { background: var(--hover); color: var(--tuatara); padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+.id { font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); margin-top: 12px; }
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); margin-bottom: 10px; }
+</style>
+</head><body>
+<div class="card" style="background:var(--elev-1)">
+  <div class="cap">Program card — used in search results & inline within answers</div>
+  <div class="card-prog">
+    <div class="eyebrow">Bachelor · Engineering</div>
+    <div class="title">Bachelor's Degree in Artificial Intelligence</div>
+    <div style="font-size:14px; color:var(--storm-dust); line-height:1.5">A 4-year on-site program covering machine learning, applied AI, data engineering and the ethics of intelligent systems.</div>
+    <div class="facts">
+      <span class="fact">240 ECTS</span>
+      <span class="fact">4 years</span>
+      <span class="fact">On-site · Barcelona</span>
+      <span class="fact">English</span>
+      <span class="fact">Starts Sept</span>
+    </div>
+    <div class="id">en/bachelor-artificial-intelligence</div>
+  </div>
+</div>
+</body></html>

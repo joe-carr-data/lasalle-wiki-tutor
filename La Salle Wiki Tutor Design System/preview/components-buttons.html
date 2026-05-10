@@ -1,0 +1,36 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.btn { font-family: var(--font-sans); font-size: 14px; font-weight: 500; padding: 8px 16px; border-radius: 8px; border: 0; cursor: pointer; transition: all 150ms cubic-bezier(.22,.61,.36,1); }
+.btn-primary { background: var(--ls-blue); color: white; }
+.btn-primary:hover { background: var(--ls-blue-hover); }
+.btn-secondary { background: var(--white); color: var(--tuatara); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--hover); }
+.btn-ghost { background: transparent; color: var(--ls-blue-press); }
+.btn-ghost:hover { background: var(--ls-blue-soft); }
+.btn-sm { padding: 6px 12px; font-size: 13px; border-radius: 6px; }
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); margin-bottom: 8px; }
+.group { padding: 12px 0; }
+.group + .group { border-top: 1px solid var(--border); }
+</style>
+</head><body>
+<div class="card">
+  <div class="group">
+    <div class="cap">Primary · Secondary · Ghost</div>
+    <div class="row">
+      <button class="btn btn-primary">Ask the tutor</button>
+      <button class="btn btn-secondary">View syllabus</button>
+      <button class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+  <div class="group">
+    <div class="cap">Small / inline</div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm">Send</button>
+      <button class="btn btn-secondary btn-sm">Compare</button>
+      <button class="btn btn-ghost btn-sm">Clear</button>
+    </div>
+  </div>
+</div>
+</body></html>

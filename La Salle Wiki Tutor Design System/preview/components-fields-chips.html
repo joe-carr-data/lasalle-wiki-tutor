@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.group { padding: 10px 0; }
+.group + .group { border-top: 1px solid var(--border); }
+.cap { font-family: var(--font-mono); font-size: 11px; color: var(--storm-dust); margin-bottom: 8px; }
+.field { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--white); font-family: var(--font-sans); font-size: 14px; color: var(--tuatara); }
+.field input { all: unset; flex: 1; font-family: var(--font-sans); font-size: 14px; }
+.field.focused { border-color: var(--ls-blue); box-shadow: 0 0 0 3px rgba(79,168,216,.35); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--hover); color: var(--tuatara); border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid transparent; }
+.chip.cite { background: var(--ls-blue-soft); color: var(--ls-blue-press); font-family: var(--font-mono); border: 1px solid rgba(79,168,216,.25); }
+.chip.id { background: var(--hover); color: var(--tuatara); font-family: var(--font-mono); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+</head><body>
+<div class="card">
+  <div class="group">
+    <div class="cap">Input — default · focused</div>
+    <div class="field"><input placeholder="Ask about programs, courses, careers…"></div>
+    <div style="height:8px"></div>
+    <div class="field focused"><input value="Is the AI bachelor in English?"></div>
+  </div>
+  <div class="group">
+    <div class="cap">Chips — neutral default; LS Blue earned for citations</div>
+    <div class="row">
+      <span class="chip">Bachelor</span>
+      <span class="chip">On-site</span>
+      <span class="chip">English</span>
+      <span class="chip cite">en/bachelor-artificial-intelligence</span>
+    </div>
+  </div>
+</div>
+</body></html>

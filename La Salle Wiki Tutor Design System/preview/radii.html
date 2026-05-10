@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.tile { aspect-ratio: 1 / 1; background: var(--brand-400); display: flex; align-items: end; justify-content: center; padding: 8px; }
+.lbl { font-family: var(--font-mono); font-size: 11px; color: rgba(255,255,255,.95); }
+.name { font-family: var(--font-sans); font-size: 11px; font-weight: 600; color: var(--fg-2); text-align: center; margin-top: 6px; }
+</style>
+</head><body>
+<div class="card">
+  <div class="grid">
+    <div><div class="tile" style="border-radius:4px"><span class="lbl">4</span></div><div class="name">r-xs</div></div>
+    <div><div class="tile" style="border-radius:6px"><span class="lbl">6</span></div><div class="name">r-sm</div></div>
+    <div><div class="tile" style="border-radius:10px"><span class="lbl">10</span></div><div class="name">r-md</div></div>
+    <div><div class="tile" style="border-radius:14px"><span class="lbl">14</span></div><div class="name">r-lg</div></div>
+    <div><div class="tile" style="border-radius:20px"><span class="lbl">20</span></div><div class="name">r-xl</div></div>
+    <div><div class="tile" style="border-radius:999px"><span class="lbl">∞</span></div><div class="name">r-pill</div></div>
+  </div>
+</div>
+</body></html>

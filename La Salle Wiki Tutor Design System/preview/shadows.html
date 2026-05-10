@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; padding: 8px 4px 16px; }
+.tile { aspect-ratio: 1.2 / 1; background: var(--paper); border-radius: var(--r-md); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); border: 1px solid rgba(0,0,0,.02); }
+.name { font-family: var(--font-sans); font-size: 11px; font-weight: 600; color: var(--fg-2); text-align: center; margin-top: 8px; }
+.s1 { box-shadow: var(--shadow-1); }
+.s2 { box-shadow: var(--shadow-2); }
+.s3 { box-shadow: var(--shadow-3); }
+.sb { box-shadow: var(--shadow-brand); }
+</style>
+</head><body>
+<div class="card" style="background:var(--bone);">
+  <div class="grid">
+    <div><div class="tile s1">shadow-1</div><div class="name">hairline</div></div>
+    <div><div class="tile s2">shadow-2</div><div class="name">card</div></div>
+    <div><div class="tile s3">shadow-3</div><div class="name">overlay</div></div>
+    <div><div class="tile sb" style="background:var(--brand-400);color:white">shadow-brand</div><div class="name">active / pulse</div></div>
+  </div>
+</div>
+</body></html>
