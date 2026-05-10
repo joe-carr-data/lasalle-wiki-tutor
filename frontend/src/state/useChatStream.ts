@@ -132,6 +132,27 @@ function applySseEvent(
   turnId: string,
   ev: SseEvent,
 ): ChatStreamState {
+  // Belt-and-braces: any reducer error gets logged + swallowed instead of
+  // unmounting the whole chat. Treat all event payload fields as optional;
+  // only `final_response.end` is guaranteed to carry the full answer.
+  try {
+    return _applySseEvent(state, turnId, ev);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("SSE reducer error on event", ev.event, err);
+    return state;
+  }
+}
+
+function _applySseEvent(
+  state: ChatStreamState,
+  turnId: string,
+  ev: SseEvent,
+): ChatStreamState {
+  // Per-event payloads are accessed below via ev.data.X — every individual
+  // field is treated as optional and string-coerced before any concat.
+  // The outer try/catch in applySseEvent still catches the rare case of
+  // ev.data itself being undefined.
   switch (ev.event) {
     case "session.started":
       // Lock in the server-assigned session id if it differs (resumed session).
@@ -193,43 +214,59 @@ function applySseEvent(
         return { ...t, reasoning };
       });
 
-    case "tool.start":
+    case "tool.start": {
+      // The contract says data.tool is always present, but defending
+      // against a missing field is cheaper than diagnosing a render
+      // crash that blanks the chat.
+      const tool = ev.data.tool ?? ({} as Partial<typeof ev.data.tool>);
       return updateTurn(state, turnId, (t) => ({
         ...t,
         reasoning: [
           ...t.reasoning,
           {
             kind: "tool",
-            id: ev.data.tool.call_id || `tool-${t.reasoning.length}`,
-            name: ev.data.tool.name,
-            icon: ev.data.tool.icon,
-            argsDisplay: ev.data.tool.arguments_display,
+            id:
+              (typeof tool.call_id === "string" && tool.call_id) ||
+              `tool-${t.reasoning.length}`,
+            name: tool.name || "tool",
+            icon: tool.icon || "",
+            argsDisplay: tool.arguments_display || "",
             startedAt: Date.now(),
             status: "active",
           },
         ],
       }));
+    }
 
-    case "tool.end":
+    case "tool.end": {
+      const tool = ev.data.tool ?? ({} as Partial<typeof ev.data.tool>);
+      const callId = typeof tool.call_id === "string" ? tool.call_id : "";
+      const name = tool.name || "";
       return updateTurn(state, turnId, (t) => {
         const reasoning = t.reasoning.slice();
         // Match by call_id; fall back to FIFO by name (mirrors backend matching).
-        let idx = reasoning.findIndex(
-          (s) =>
-            s.kind === "tool" &&
-            s.status === "active" &&
-            s.id === ev.data.tool.call_id,
-        );
-        if (idx === -1) {
+        let idx = -1;
+        if (callId) {
           idx = reasoning.findIndex(
-            (s) => s.kind === "tool" && s.status === "active" && s.name === ev.data.tool.name,
+            (s) => s.kind === "tool" && s.status === "active" && s.id === callId,
+          );
+        }
+        if (idx === -1 && name) {
+          idx = reasoning.findIndex(
+            (s) => s.kind === "tool" && s.status === "active" && s.name === name,
+          );
+        }
+        if (idx === -1) {
+          // Last resort: close the oldest still-active tool.
+          idx = reasoning.findIndex(
+            (s) => s.kind === "tool" && s.status === "active",
           );
         }
         if (idx === -1) return t;
         const cur = reasoning[idx] as Extract<ReasoningStep, { kind: "tool" }>;
         reasoning[idx] = {
           ...cur,
-          status: ev.data.success ? "done" : "error",
+          status: ev.data.success === false ? "error" : "done",
           endedAt: Date.now(),
           durationMs: ev.data.duration_ms,
           durationDisplay: ev.data.duration_display,
@@ -237,6 +274,7 @@ function applySseEvent(
         };
         return { ...t, reasoning };
       });
+    }
 
     case "final_response.delta":
       return updateTurn(state, turnId, (t) => {
