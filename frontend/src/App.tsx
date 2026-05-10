@@ -8,9 +8,11 @@ import { Avatar } from "./components/Avatar";
 import { ReasoningTimeline } from "./components/ReasoningTimeline";
 import { MarkdownAnswer } from "./components/MarkdownAnswer";
 import { ConfirmDelete } from "./components/ConfirmDelete";
+import { JumpToLatest } from "./components/JumpToLatest";
 import { RotateCw } from "./components/icons";
 import { useChatStream } from "./state/useChatStream";
 import { useConversations } from "./state/useConversations";
+import { useStickyScroll } from "./state/useStickyScroll";
 import { getUserId } from "./lib/userId";
 import type { Turn } from "./state/useChatStream";
 import type { ConversationDetail } from "./api/conversations";
@@ -99,9 +101,24 @@ export default function App() {
   const canRetry =
     !!lastTurn && (lastTurn.status === "error" || lastTurn.status === "cancelled");
 
+  // Sticky-bottom scroll: re-pin to the bottom while the user is at the
+  // bottom and content keeps appending. The contentTick changes when:
+  //   - a new turn is added
+  //   - the active turn's answer markdown grows
+  //   - reasoning steps grow
+  // We compose a cheap signature from those signals.
+  const lastTurnSignature = lastTurn
+    ? `${lastTurn.id}:${lastTurn.reasoning.length}:${lastTurn.answer.markdown.length}`
+    : "";
+  const contentTick = `${state.turns.length}:${lastTurnSignature}`;
+  const { ref: scrollRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>({
+    contentTick,
+  });
+
   return (
     <>
       <Shell
+        ref={scrollRef}
         sidebar={
           <Sidebar
             conversations={conversations.items.map((c) => ({ id: c.id, title: c.title }))}
@@ -129,6 +146,13 @@ export default function App() {
               onRetry={(turnId) => void retry(turnId)}
             />
           )
+        }
+        threadOverlay={
+          <JumpToLatest
+            visible={!atBottom && (state.turns.length > 0 || !!replayTurns)}
+            lang={lang}
+            onJump={() => scrollToBottom(true)}
+          />
         }
         composer={
           <Composer
