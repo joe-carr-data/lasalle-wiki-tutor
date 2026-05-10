@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# LaSalle Wiki Tutor — first-boot bootstrap. Renders into the EC2 user_data
+# field via cloudinit_config. Logs land in /var/log/cloud-init-output.log;
+# tail it over SSM during the first boot to watch progress.
+#
+# Idempotent: re-running each step is safe. user_data only fires once at
+# instance launch, but the same script lives at /usr/local/sbin/bootstrap.sh
+# so it can be re-invoked manually if a step needed retry.
+
+set -euxo pipefail
+
+# ── 0. Knobs (from Terraform templating) ─────────────────────────────────
+DOMAIN_NAME='${domain_name}'
+LETSENCRYPT_EMAIL='${letsencrypt_email}'
+GIT_REPO_URL='${git_repo_url}'
+GIT_BRANCH='${git_branch}'
+WIKI_RELEASE_TAG='${wiki_release_tag}'
+APP_DIR='${app_dir}'
+PARAM_OPENAI='${param_openai}'
+PARAM_ACCESS_TOKEN='${param_access_token}'
+AWS_REGION='${aws_region}'
+APP_USER='app'
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ── 1. Swap (2 GB) — keeps t3.micro safe under load ──────────────────────
+if ! swapon --show | grep -q '^/swapfile'; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  # Encourage kernel to keep RAM and avoid premature swapping under chat load.
+  sysctl -w vm.swappiness=10
+  echo 'vm.swappiness=10' > /etc/sysctl.d/99-wiki-tutor.conf
+fi
+
+# ── 2. apt: base packages ────────────────────────────────────────────────
+apt-get update -y
+apt-get install -y --no-install-recommends \
+  ca-certificates curl gnupg lsb-release \
+  git jq awscli unzip python3 python3-venv \
+  debian-keyring debian-archive-keyring apt-transport-https
+
+# ── 3. Docker + compose-plugin (official Docker apt repo) ────────────────
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+
+DOCKER_REPO_LINE="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable"
+echo "$DOCKER_REPO_LINE" > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y --no-install-recommends \
+  docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+systemctl enable --now docker
+
+# ── 4. Caddy (official packagecloud repo) ────────────────────────────────
+curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key | \
+  gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > \
+  /etc/apt/sources.list.d/caddy-stable.list
+apt-get update -y
+apt-get install -y caddy
+
+# ── 5. App user (non-root, owns /opt/app and runs the systemd unit) ──────
+if ! id -u "$APP_USER" >/dev/null 2>&1; then
+  useradd --system --create-home --home-dir /var/lib/$APP_USER \
+          --shell /bin/bash --comment "wiki-tutor app" $APP_USER
+fi
+# Lets the app user invoke docker (needed because compose runs as this user).
+usermod -aG docker $APP_USER
+
+# ── 6. uv (Python package manager) — system-wide so the app user can use it ──
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+chmod 0755 /usr/local/bin/uv /usr/local/bin/uvx 2>/dev/null || true
+
+# ── 7. Clone the repo and own it as the app user ─────────────────────────
+mkdir -p "$APP_DIR"
+chown $APP_USER:$APP_USER "$APP_DIR"
+sudo -u $APP_USER git clone --branch "$GIT_BRANCH" "$GIT_REPO_URL" "$APP_DIR"
+
+# ── 8. Pull the wiki corpus from the GitHub Release ──────────────────────
+sudo -u $APP_USER bash -lc "cd '$APP_DIR' && scripts/fetch_wiki.sh '$WIKI_RELEASE_TAG'"
+
+# ── 9. Refresh-env helper — single source of truth for /opt/app/.env ─────
+cat > /usr/local/bin/refresh-app-env <<EOF_REFRESH
+#!/usr/bin/env bash
+# Pulls secrets from SSM Parameter Store and writes /opt/app/.env.
+# Re-run via `aws ssm send-command` after rotating a parameter.
+set -euo pipefail
+OPENAI=\$(aws ssm get-parameter --with-decryption --region "$AWS_REGION" --name "$PARAM_OPENAI" --query Parameter.Value --output text)
+TOKEN=\$(aws ssm get-parameter --with-decryption --region "$AWS_REGION" --name "$PARAM_ACCESS_TOKEN" --query Parameter.Value --output text)
+umask 077
+cat > "$APP_DIR/.env" <<ENV
+ENVIRONMENT=prod
+ASSISTANT_NAME="LaSalle Wiki Tutor"
+TERMINAL_LOGS_ENABLED=False
+LOG_LEVEL=INFO
+OPENAI_API_KEY=\$OPENAI
+WIKI_TUTOR_ACCESS_TOKEN=\$TOKEN
+MONGO_URL=mongodb://localhost:27017
+MONGO_DATABASE=lasalle_catalog_assistant
+ENV
+chown $APP_USER:$APP_USER "$APP_DIR/.env"
+chmod 0600 "$APP_DIR/.env"
+EOF_REFRESH
+chmod 0755 /usr/local/bin/refresh-app-env
+/usr/local/bin/refresh-app-env
+
+# ── 10. Python deps (uv installs into .venv in /opt/app) ─────────────────
+sudo -u $APP_USER bash -lc "cd '$APP_DIR' && uv sync --frozen"
+
+# ── 11. Mongo via docker compose (just the mongo service, not the full stack) ──
+# The repo's docker-compose.yml already declares a `mongo` service with a
+# named volume. Compose runs as the app user (which is in the docker group).
+sudo -u $APP_USER bash -lc "cd '$APP_DIR' && docker compose up -d mongo"
+
+# ── 12. Caddyfile + reload ───────────────────────────────────────────────
+cat > /etc/caddy/Caddyfile <<EOF_CADDY
+{
+    email $LETSENCRYPT_EMAIL
+}
+
+$DOMAIN_NAME {
+    encode zstd gzip
+
+    # SSE: disable response buffering and lengthen idle timeouts so long
+    # agent runs (15-30s) don't get cut off by Caddy's defaults.
+    reverse_proxy 127.0.0.1:8000 {
+        flush_interval -1
+        transport http {
+            keepalive 5m
+            response_header_timeout 5m
+        }
+    }
+
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+EOF_CADDY
+mkdir -p /var/log/caddy
+chown -R caddy:caddy /var/log/caddy
+systemctl reload caddy
+
+# ── 13. systemd unit for the app — runs uvicorn as the app user ──────────
+cat > /etc/systemd/system/wiki-tutor.service <<EOF_SYSTEMD
+[Unit]
+Description=LaSalle Wiki Tutor — FastAPI/uvicorn
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$APP_DIR
+EnvironmentFile=$APP_DIR/.env
+ExecStartPre=/usr/local/bin/refresh-app-env
+# 127.0.0.1 only — Caddy is the only thing that should ever talk to uvicorn.
+ExecStart=$APP_DIR/.venv/bin/uvicorn streaming:app --host 127.0.0.1 --port 8000 --log-level info
+Restart=always
+RestartSec=3
+# Hardening — minimal but useful on a public box.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=$APP_DIR /var/lib/$APP_USER
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOF_SYSTEMD
+
+systemctl daemon-reload
+systemctl enable --now wiki-tutor.service
+
+# ── 14. Final health check ───────────────────────────────────────────────
+# Give uvicorn a moment to come up, then probe /health locally.
+for i in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8000/health > /dev/null 2>&1; then
+    echo "wiki-tutor is up — bootstrap complete."
+    exit 0
+  fi
+  sleep 2
+done
+echo "wiki-tutor /health did not respond after 60s — check 'journalctl -u wiki-tutor'." >&2
+exit 1

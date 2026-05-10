@@ -1,0 +1,19 @@
+// Copy to terraform.tfvars (gitignored) and fill in real values.
+// Or pass via TF_VAR_* env vars; or via -var on the command line.
+
+domain_name              = "lasalle.generateeve.com"
+letsencrypt_email        = "your-email@example.com"
+
+// Required — sensitive. Don't commit terraform.tfvars to git.
+openai_api_key           = "sk-..."
+
+// Generate a fresh one with:
+//   python -c "import secrets; print(secrets.token_urlsafe(32))"
+wiki_tutor_access_token  = "<32+ url-safe chars>"
+
+// Optional overrides (defaults are sensible):
+// aws_region        = "eu-west-1"
+// instance_type     = "t3.micro"
+// root_volume_gb    = 30
+// git_branch        = "main"
+// wiki_release_tag  = "wiki-latest"

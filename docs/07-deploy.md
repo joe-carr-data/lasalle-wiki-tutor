@@ -60,42 +60,87 @@ scripts/publish_wiki.sh wiki-2026-05-10  # also pin a versioned snapshot
 The script refuses to publish if `wiki/` looks partial (fewer than 100
 markdown files, or missing the embeddings metadata).
 
-## AWS demo: t3.micro + Caddy
+## AWS demo: t3.micro + Caddy (Terraform-managed)
 
-Goal: public URL, HTTPS via Let's Encrypt, gated by
-`WIKI_TUTOR_ACCESS_TOKEN`. Cost ≈ $8/mo on-demand, less reserved.
+Goal: public URL `https://lasalle.generateeve.com`, HTTPS via Let's Encrypt,
+gated by `WIKI_TUTOR_ACCESS_TOKEN`. Single t3.micro in `eu-west-1`, no SSH
+(SSM Session Manager only), Mongo in compose alongside the app, frontend
+served from FastAPI's bundled `dist/`. Cost ~$10/mo on-demand.
 
-### One-time setup
+The provisioning is in [`infra/`](../infra/) — Terraform module that lays
+down the VPC bits, the SSM-managed instance profile, the EBS-snapshot
+lifecycle, and a `cloud-init` bootstrap that installs Docker, Caddy,
+fetches the wiki release, renders `.env` from SSM Parameter Store, and
+starts everything as systemd services.
 
 ```bash
-# On AWS console / CLI:
-# - launch t3.micro Ubuntu 22.04, security group allows 22, 80, 443.
-# - assign an Elastic IP and a Route 53 A record (e.g. tutor.salleurl-demo.com).
+cd infra
+cp terraform.tfvars.example terraform.tfvars
+$EDITOR terraform.tfvars      # domain_name, letsencrypt_email,
+                              # openai_api_key, wiki_tutor_access_token
+terraform init
+terraform apply
+```
 
-ssh ubuntu@tutor.salleurl-demo.com
+Apply takes ~90s for the AWS resources; the box's first boot bootstrap is
+another 3-5 min. Watch progress over SSM:
+
+```bash
+aws ssm start-session --target $(terraform output -raw instance_id)
+sudo tail -f /var/log/cloud-init-output.log
+```
+
+Then set the A record at GoDaddy: `lasalle.generateeve.com` → the EIP from
+`terraform output public_ip`. Hit the URL once DNS resolves; Caddy holds
+the first request ~10-30s while it acquires the cert.
+
+Full runbook (rotation, updates, troubleshooting): [`infra/README.md`](../infra/README.md).
+
+### Manual fallback (if you can't run Terraform)
+
+Same shape, by hand:
+
+```bash
+# AWS console:
+#   - launch t3.micro Ubuntu 24.04 in eu-west-1, default VPC.
+#   - attach an IAM instance profile with AmazonSSMManagedInstanceCore.
+#   - security group: 80, 443 inbound; egress all. NO port 22.
+#   - allocate + attach an Elastic IP.
+
+aws ssm start-session --target i-xxxxxxxx     # no SSH key needed
 sudo apt update && sudo apt install -y docker.io docker-compose-plugin caddy git
-sudo usermod -aG docker $USER && newgrp docker
+sudo usermod -aG docker ubuntu && newgrp docker
 
-# Clone + bootstrap (mirrors the dev workflow above):
-git clone https://github.com/joe-carr-data/lasalle-wiki-tutor.git
-cd lasalle-wiki-tutor
+git clone https://github.com/joe-carr-data/lasalle-wiki-tutor.git /opt/app
+cd /opt/app
 cp .env.example .env
 # edit .env: real OPENAI_API_KEY + a fresh WIKI_TUTOR_ACCESS_TOKEN
 scripts/fetch_wiki.sh
 
-docker compose up -d --build      # starts mongo + the app on :8000
+# Mongo only — uvicorn runs natively under systemd.
+docker compose up -d mongo
+
+uv sync
+# Render Caddyfile + systemd unit (see infra/templates/user_data.sh.tftpl
+# for the canonical content).
+sudo systemctl reload caddy
+sudo systemctl enable --now wiki-tutor.service
 ```
 
 ### Caddy in front (auto-HTTPS)
 
-Create `/etc/caddy/Caddyfile`:
+`/etc/caddy/Caddyfile`:
 
 ```caddy
-tutor.salleurl-demo.com {
+{
+    email <your-email>
+}
+
+lasalle.generateeve.com {
     encode zstd gzip
 
     # SSE needs no buffering; keep connections open for long agent runs.
-    reverse_proxy localhost:8000 {
+    reverse_proxy 127.0.0.1:8000 {
         flush_interval -1
         transport http {
             keepalive 5m
@@ -104,37 +149,41 @@ tutor.salleurl-demo.com {
     }
 
     log {
-        output file /var/log/caddy/tutor.log {
-            roll_size 100mb
+        output file /var/log/caddy/access.log {
+            roll_size 50mb
             roll_keep 5
         }
+        format json
     }
 }
 ```
 
-Reload: `sudo systemctl reload caddy`. Caddy obtains a Let's Encrypt cert on
-first request and auto-renews.
+Reload: `sudo systemctl reload caddy`. Caddy obtains a Let's Encrypt cert
+on first request and auto-renews.
 
-### Operations
+### Operations (manual path)
 
 ```bash
 # Push code:                  git push   (on dev box)
-# Pull on the EC2:            git pull && docker compose up -d --build
-# Update wiki corpus:         scripts/fetch_wiki.sh && docker compose restart app
+# Pull on the EC2:            cd /opt/app && git pull && uv sync && sudo systemctl restart wiki-tutor
+# Update wiki corpus:         FORCE=1 scripts/fetch_wiki.sh && sudo systemctl restart wiki-tutor
 # Rotate the access token:
-#   1. edit .env on the EC2:   WIKI_TUTOR_ACCESS_TOKEN=<new>
-#   2. docker compose up -d   (restarts the app with the new env)
+#   1. edit /opt/app/.env:    WIKI_TUTOR_ACCESS_TOKEN=<new>
+#   2. sudo systemctl restart wiki-tutor
 #   3. distribute the new token; old links 401 immediately.
 ```
 
+The Terraform path automates rotation through SSM Parameter Store — see
+`infra/README.md`.
+
 ### Rate-limiting the gate
 
-The `POST /api/auth/validate` endpoint should be rate-limited per IP to
-prevent brute-forcing a 32-char token. Caddy can do it with the
-`rate_limit` plugin:
+Application-level rate limiting is already in `core/auth.py` (10 attempts
+per IP per minute on `/api/auth/validate`). Caddy-level is defense in
+depth; install the rate-limit plugin if you want it:
 
 ```caddy
-tutor.salleurl-demo.com {
+lasalle.generateeve.com {
     @gate path /api/auth/validate
     rate_limit @gate {
         zone gate {
@@ -143,7 +192,7 @@ tutor.salleurl-demo.com {
             window 1m
         }
     }
-    reverse_proxy localhost:8000 { ... }
+    reverse_proxy 127.0.0.1:8000 { ... }
 }
 ```
 

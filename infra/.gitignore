@@ -1,0 +1,12 @@
+# Local state and TF working directory — never commit. State has secrets.
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Plan files (binary, can contain secrets)
+*.tfplan
+
+# .terraform.lock.hcl IS committed — it pins provider versions for reproducible
+# applies (analogous to package-lock.json). Do not add it here.
