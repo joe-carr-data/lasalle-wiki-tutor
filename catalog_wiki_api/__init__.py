@@ -124,6 +124,15 @@ def _apply_filters(
     modality: str | None,
     language: str | None,
 ) -> list[dict[str, Any]]:
+    # Treat empty strings as "no filter". The LLM tool-calling layer often
+    # passes "" for unset string params (matches the Python default) and we
+    # don't want that to look like a request to filter to programs with
+    # modality == "".
+    level = level or None
+    area = area or None
+    modality = modality or None
+    language = language or None
+
     out = programs
     if level is not None:
         if level not in SUPPORTED_LEVELS:

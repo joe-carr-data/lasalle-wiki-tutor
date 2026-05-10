@@ -72,6 +72,35 @@ def _error(code: str, message: str) -> str:
     return _json({"ok": False, "error": {"code": code, "message": message}})
 
 
+def _clean(value: str | None) -> str | None:
+    """Normalize an optional string parameter: empty / whitespace-only → None.
+
+    OpenAI's strict-mode tool calling sometimes emits ``""`` for optional
+    string fields instead of omitting them. Without this, an empty
+    filter would slip through and the catalog API rejects it as an
+    invalid enum value. Treat empty as "no filter" — what the LLM
+    almost certainly meant.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _clean_lang(value: str | None, *, default: str = "en") -> str:
+    """Like :func:`_clean` but for the ``lang`` knob, which is never null."""
+    cleaned = _clean(value)
+    return cleaned if cleaned else default
+
+
+def _missing_arg(name: str, hint: str) -> str:
+    """Build a structured error response for a missing required arg."""
+    return _error(
+        "missing_argument",
+        f"Required argument '{name}' was empty. {hint}",
+    )
+
+
 def _summary_of(payload: dict | list, *, head: int = 200) -> str:
     """Compact preview string for the TOOL_END event's ``result_preview``."""
     s = _json(payload)
@@ -165,9 +194,23 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: ``{"ok": True, "query": ..., "total": N, "results": [...]}``.
         """
         call_id = _claim_call_id(agent, "search_programs")
+        cleaned_query = _clean(query)
+        if cleaned_query is None:
+            result = _missing_arg(
+                "query",
+                "Pass a free-text search phrase like 'computer science bachelor' "
+                "or 'cybersecurity online'. If you don't have a query and just "
+                "want to browse, call list_programs instead.",
+            )
+            await _emit_end("search_programs", result, call_id)
+            return result
         try:
-            filters = {"level": level, "area": area, "modality": modality}
-            payload = api.search_programs(query, filters=filters, top_k=top_k, lang=lang)
+            filters = {
+                "level": _clean(level),
+                "area": _clean(area),
+                "modality": _clean(modality),
+            }
+            payload = api.search_programs(cleaned_query, filters=filters, top_k=top_k, lang=_clean_lang(lang))
             out = {
                 "ok": True,
                 "query": payload["query"],
@@ -217,8 +260,9 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         call_id = _claim_call_id(agent, "list_programs")
         try:
             payload = api.list_programs(
-                level=level, area=area, modality=modality, language=language,
-                lang=lang, offset=offset, limit=limit,
+                level=_clean(level), area=_clean(area), modality=_clean(modality),
+                language=_clean(language),
+                lang=_clean_lang(lang), offset=offset, limit=limit,
             )
             out = {"ok": True, **payload}
             result = _json(out)
@@ -246,7 +290,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         """
         call_id = _claim_call_id(agent, "get_index_facets")
         try:
-            payload = api.get_index_facets(lang=lang)
+            payload = api.get_index_facets(lang=_clean_lang(lang))
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -281,8 +325,18 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             ``sections`` if requested).
         """
         call_id = _claim_call_id(agent, "get_program")
+        cleaned_id = _clean(program_id)
+        if cleaned_id is None:
+            result = _missing_arg(
+                "program_id",
+                "Pass a canonical id like 'en/bachelor-artificial-intelligence' "
+                "or 'es/grado-en-ingenieria-informatica'. Get ids from "
+                "search_programs or list_programs results.",
+            )
+            await _emit_end("get_program", result, call_id)
+            return result
         try:
-            payload = api.get_program(program_id, include_sections=include_sections)
+            payload = api.get_program(cleaned_id, include_sections=include_sections)
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -310,8 +364,26 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: ``{"ok": True, "section": ..., "body_markdown": "..."}``.
         """
         call_id = _claim_call_id(agent, "get_program_section")
+        cleaned_id = _clean(program_id)
+        cleaned_section = _clean(section)
+        if cleaned_id is None:
+            result = _missing_arg(
+                "program_id",
+                "Pass a canonical id like 'en/bachelor-artificial-intelligence'. "
+                "Get ids from search_programs or list_programs results.",
+            )
+            await _emit_end("get_program_section", result, call_id)
+            return result
+        if cleaned_section is None:
+            result = _missing_arg(
+                "section",
+                "Pass one of: goals, requirements, curriculum, careers, "
+                "methodology, faculty. Case-sensitive.",
+            )
+            await _emit_end("get_program_section", result, call_id)
+            return result
         try:
-            payload = api.get_program_section(program_id, section)
+            payload = api.get_program_section(cleaned_id, cleaned_section)
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -338,8 +410,17 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             [{"semester": ..., "subjects": [...]}]}, ...]}``.
         """
         call_id = _claim_call_id(agent, "get_curriculum")
+        cleaned_id = _clean(program_id)
+        if cleaned_id is None:
+            result = _missing_arg(
+                "program_id",
+                "Pass a canonical id like 'en/bachelor-artificial-intelligence'. "
+                "Get ids from search_programs or list_programs results.",
+            )
+            await _emit_end("get_curriculum", result, call_id)
+            return result
         try:
-            payload = api.get_curriculum(program_id)
+            payload = api.get_curriculum(cleaned_id)
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -365,8 +446,18 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             contents, methodology, evaluation, etc.).
         """
         call_id = _claim_call_id(agent, "get_subject")
+        cleaned_id = _clean(subject_id)
+        if cleaned_id is None:
+            result = _missing_arg(
+                "subject_id",
+                "Pass a canonical subject id like 'en/algebra-lineal' or "
+                "'es/programacion-de-graficos-3d-0'. Get ids from "
+                "get_curriculum's subjects list.",
+            )
+            await _emit_end("get_subject", result, call_id)
+            return result
         try:
-            payload = api.get_subject(subject_id)
+            payload = api.get_subject(cleaned_id)
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -398,8 +489,21 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             start_date, subject_count) so the LLM can render a table.
         """
         call_id = _claim_call_id(agent, "compare_programs")
+        # Drop empty / blank ids that the LLM occasionally emits in a list
+        # (e.g. ["", "en/bachelor-ai", ""]). Need at least two real ids
+        # for the comparison to be meaningful.
+        clean_ids = [pid for pid in (program_ids or []) if _clean(pid)]
+        if len(clean_ids) < 2:
+            result = _missing_arg(
+                "program_ids",
+                "Pass at least two canonical program ids, e.g. "
+                "['en/bachelor-computer-engineering', 'en/bachelor-artificial-intelligence']. "
+                "Get ids from search_programs or list_programs.",
+            )
+            await _emit_end("compare_programs", result, call_id)
+            return result
         try:
-            payload = api.compare_programs(program_ids)
+            payload = api.compare_programs(clean_ids)
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -431,7 +535,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         """
         call_id = _claim_call_id(agent, "get_faq")
         try:
-            payload = api.get_faq(lang=lang)
+            payload = api.get_faq(lang=_clean_lang(lang))
             result = _json({"ok": True, **payload})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
@@ -459,8 +563,18 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             ``{"ok": True, "entry": null}`` if not found.
         """
         call_id = _claim_call_id(agent, "get_glossary_entry")
+        cleaned_term = _clean(term)
+        if cleaned_term is None:
+            result = _missing_arg(
+                "term",
+                "Pass a glossary term like 'ECTS', 'Modality', or 'Ramon Llull'. "
+                "Case-insensitive. Get the available terms by reading the glossary "
+                "section returned by get_faq, or just try the term as-is.",
+            )
+            await _emit_end("get_glossary_entry", result, call_id)
+            return result
         try:
-            entry = api.get_glossary_entry(term, lang=lang)
+            entry = api.get_glossary_entry(cleaned_term, lang=_clean_lang(lang))
             result = _json({"ok": True, "entry": entry})
         except CatalogApiError as exc:
             result = _error(exc.code, exc.message)
