@@ -68,8 +68,10 @@ def test_persona_explorer_ai(call_counter):
 
 
 def test_persona_comparison_shopper(call_counter):
-    search = api.search_programs("artificial intelligence", lang="en", top_k=4)
-    bachelors = [r for r in search["results"] if r["level"] == "bachelor"][:2]
+    # "Show me AI bachelors and compare two of them" — uses the area filter
+    # so we get every AI/data-science bachelor regardless of title wording.
+    payload = api.list_programs(level="bachelor", area="ai-data-science", lang="en", limit=10)
+    bachelors = payload["programs"][:2]
     if len(bachelors) < 2:
         pytest.skip("not enough AI bachelors to compare")
     comparison = api.compare_programs([b["canonical_program_id"] for b in bachelors])
