@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useDeferredValue, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -54,9 +54,12 @@ export function MarkdownAnswer({
   // which would blank the entire app. Any non-string upstream bug is
   // contained here.
   const safeText = typeof text === "string" ? text : "";
-  // We pass the rolling accumulated text — re-parse on every delta. Memoization
-  // on Markdown means React only re-renders the diff, which keeps streaming
-  // jitter manageable on the small bundles the agent emits.
+  // The expensive react-markdown parse runs on a deferred snapshot of
+  // the text. While streaming this lets React skip intermediate parses
+  // when deltas arrive faster than the browser can paint, removing the
+  // visible jitter without dropping any final tokens — the deferred
+  // value always settles on the latest text within a frame or two.
+  const deferredText = useDeferredValue(safeText);
   const citations = useMemo(
     () => (showSources && done ? extractCitations(safeText) : []),
     [showSources, done, safeText],
@@ -77,7 +80,7 @@ export function MarkdownAnswer({
   return (
     <div className={`answer ${streaming ? "answer-streaming" : ""}`} aria-live="polite">
       <div className="answer-md">
-        <Markdown text={safeText} />
+        <Markdown text={deferredText} />
         {streaming && <span className="answer-caret" aria-hidden="true" />}
       </div>
       {citations.length > 0 && (

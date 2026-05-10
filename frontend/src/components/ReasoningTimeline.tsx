@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2 } from "./icons";
 import { ToolCallItem } from "./ToolCallItem";
 import { summarizeReasoning } from "../lib/format";
@@ -88,10 +88,13 @@ interface ThoughtItemProps {
 
 function ThoughtItem({ step }: ThoughtItemProps) {
   const stateClass = step.status === "active" ? "tl-active" : "tl-done";
+  // Defer the rapidly-growing text so React can drop intermediate frames
+  // when deltas arrive faster than paint. Same trick as MarkdownAnswer.
+  const deferredText = useDeferredValue(step.text);
   return (
     <div className={`tl-step tl-thought ${stateClass}`}>
       <span className="tl-dot" />
-      <span className="tl-thought-text">{step.text || "…"}</span>
+      <span className="tl-thought-text">{deferredText || "…"}</span>
     </div>
   );
 }

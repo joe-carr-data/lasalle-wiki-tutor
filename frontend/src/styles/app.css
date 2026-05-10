@@ -528,6 +528,10 @@ button { font: inherit; }
   line-height: 1.4;
   color: var(--fg-2);
   white-space: pre-wrap;
+  /* Scope reflows so the rest of the page doesn't repaint on every
+     delta, and keep the text antialiased while it grows. */
+  contain: content;
+  text-rendering: optimizeSpeed;
 }
 .tl-thought.tl-active .tl-thought-text { color: var(--brand-800); }
 
@@ -604,6 +608,9 @@ button { font: inherit; }
 }
 .answer-md > :first-child { margin-top: 0; }
 .answer-md > :last-child  { margin-bottom: 0; }
+/* Scope expensive markdown reflows to this subtree so the rest of the
+   chat (sidebar, composer, scrollbar) doesn't paint on every delta. */
+.answer-md { contain: content; }
 .answer-md p { margin: 0.5em 0; }
 .answer-md ul, .answer-md ol { padding-left: 1.4em; margin: 0.5em 0; }
 .answer-md li { margin: 0.2em 0; }

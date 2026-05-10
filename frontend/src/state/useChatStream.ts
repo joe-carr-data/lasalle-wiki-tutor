@@ -1,6 +1,6 @@
-import { useCallback, useReducer, useRef } from "react";
+import { startTransition, useCallback, useReducer, useRef } from "react";
 import { streamQuery, StreamError } from "../api/stream";
-import type { SseEvent, StreamRequestBody } from "../api/types";
+import type { SseEvent, SseEventName, StreamRequestBody } from "../api/types";
 
 // ─── Domain model ─────────────────────────────────────────────────────────
 
@@ -64,6 +64,14 @@ const initialState: ChatStreamState = {
   turns: [],
   isStreaming: false,
 };
+
+// Delta events arrive at ~50 Hz during streaming — too fast to render
+// each one urgently without jitter. They're dispatched via
+// `startTransition` so React can drop intermediate frames.
+const DELTA_EVENTS = new Set<SseEventName>([
+  "agent.thinking.delta",
+  "final_response.delta",
+]);
 
 function updateTurn(
   state: ChatStreamState,
@@ -420,7 +428,19 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
     try {
       for await (const ev of streamQuery(body, ctrl.signal)) {
         if (ev.event === "final_response.delta") firstDeltaSeen = true;
-        dispatch({ type: "sse", turnId: turn.id, event: ev });
+        // High-frequency delta events (thinking / answer streaming) get
+        // marked as non-urgent transitions so React can keep the input
+        // responsive and skip intermediate frames if the parser parses
+        // faster than the screen can paint. Terminal/structural events
+        // (tool start/end, errors, cancels, session.ended) stay urgent
+        // so the UI feels snappy when state actually changes shape.
+        if (DELTA_EVENTS.has(ev.event)) {
+          startTransition(() => {
+            dispatch({ type: "sse", turnId: turn.id, event: ev });
+          });
+        } else {
+          dispatch({ type: "sse", turnId: turn.id, event: ev });
+        }
       }
     } catch (err) {
       if (ctrl.signal.aborted) {
