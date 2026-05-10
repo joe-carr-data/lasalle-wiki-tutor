@@ -98,7 +98,7 @@ article > div.content
 | Gap | Impact | Mitigation |
 |-----|--------|------------|
 | **Subject-to-program links are incomplete** | Only 76/179 EN programs have linked_subjects populated (the ones fetched in the initial run). Resume run populated subpages_present but not linked_subjects for already-done bases. | Can be rebuilt: scan manifest for subject records with `parent_url`, or re-parse syllabus HTML. |
-| **No pricing data extracted** | Price is in the modalities table on the base page but not in the manifest. | Extract during Phase 3 markdown conversion. |
+| **No pricing data anywhere** | The site does not publish tuition/pricing on program pages. The modalities table has duration, credits, language, schedule, location — but no price field. Students are directed to contact admissions. | The AI assistant should acknowledge this gap and direct students to admissions. |
 | **No structured metadata per subject** | Credits, semester, type (mandatory/elective) are in the HTML but not in the manifest. | Extract during Phase 3. |
 | **EN/ES cross-linking** | We don't know which EN program corresponds to which ES program. | Could match by slug similarity or by shared subject URLs. |
 
