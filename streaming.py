@@ -207,6 +207,7 @@ async def stream_query(
                 await event_queue.put(_DONE)
 
         query_task = asyncio.create_task(run_agent())
+        was_cancelled = False
 
         # Stream events from queue, watching for cancellation
         while True:
@@ -218,6 +219,7 @@ async def stream_query(
                 except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                     pass
                 yield format_sse(adapter.create_cancelled(query_id))
+                was_cancelled = True
                 break
 
             get_task = asyncio.create_task(event_queue.get())
@@ -244,15 +246,19 @@ async def stream_query(
         if not query_task.cancelled():
             await query_task
 
-        # Final response payload (lets the client persist + display)
-        try:
-            final = adapter.create_response_final(user_id=user_id)
-            yield format_sse(final)
-        except Exception as exc:
-            logger.error("[wiki-sse] response.final error: %s", exc, exc_info=True)
+        # On cancellation we deliberately skip ``response.final`` and
+        # ``session.ended``. A cancelled query has no successful final
+        # payload to persist, and clients should not interpret a cancelled
+        # turn as a normal completion. The ``cancelled`` event already
+        # signaled the terminal state.
+        if not was_cancelled:
+            try:
+                final = adapter.create_response_final(user_id=user_id)
+                yield format_sse(final)
+            except Exception as exc:
+                logger.error("[wiki-sse] response.final error: %s", exc, exc_info=True)
 
-        # session.ended
-        yield format_sse(adapter.create_session_end())
+            yield format_sse(adapter.create_session_end())
 
     except GeneratorExit:
         logger.info("[wiki-sse] Client disconnected session_id=%s", session_id)

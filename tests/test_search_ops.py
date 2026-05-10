@@ -53,6 +53,50 @@ def test_mode_override_does_not_leak_env(monkeypatch):
     assert "LASALLE_RANKER_MODE" not in os.environ
 
 
+def test_mode_override_request_scoped_under_concurrency(monkeypatch):
+    """Concurrent calls with different `mode=` must not cross-contaminate.
+
+    Regression test for the original implementation that mutated
+    ``os.environ['LASALLE_RANKER_MODE']`` for the duration of the call.
+    Two interleaved threads with different modes would clobber each other.
+    """
+    import threading
+
+    monkeypatch.delenv("LASALLE_RANKER_MODE", raising=False)
+    queries = ["artificial intelligence", "cybersecurity"]
+    modes = ["lexical", "semantic"]
+    iters = 20
+    results: list[tuple[str, str, str]] = []  # (mode, query, top_pid)
+    lock = threading.Lock()
+
+    def worker(mode: str, query: str) -> None:
+        for _ in range(iters):
+            r = api.retrieve_program_candidates(query, lang="en", top_k=1, mode=mode)
+            top = r["results"][0]["canonical_program_id"] if r["results"] else ""
+            with lock:
+                results.append((mode, query, top))
+
+    threads = [
+        threading.Thread(target=worker, args=(m, q))
+        for m, q in zip(modes, queries)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert "LASALLE_RANKER_MODE" not in os.environ
+    # Each (mode, query) pair must always produce the same top result.
+    by_pair: dict[tuple[str, str], set[str]] = {}
+    for mode, query, top in results:
+        by_pair.setdefault((mode, query), set()).add(top)
+    for pair, tops in by_pair.items():
+        assert len(tops) == 1, (
+            f"mode={pair[0]!r}, query={pair[1]!r} produced multiple top "
+            f"results across runs: {tops} — request-scoped mode is leaking"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Graceful degradation
 # ---------------------------------------------------------------------------
@@ -88,6 +132,34 @@ def test_semantic_metadata_compatibility_check():
     finally:
         if backup is not None:
             real_meta_path.write_text(backup, encoding="utf-8")
+        search_mod._semantic_meta.cache_clear()
+        search_mod._semantic_matrix_for.cache_clear()
+
+
+def test_semantic_corpus_hash_mismatch_falls_back():
+    """A sidecar whose corpus_hash doesn't match the live wiki must be rejected."""
+    search_mod._semantic_meta.cache_clear()
+    search_mod._semantic_matrix_for.cache_clear()
+
+    real_meta_path = search_mod.store.wiki_dir() / "meta" / "embeddings_meta.json"
+    if not real_meta_path.exists():
+        pytest.skip("No semantic sidecar to test against")
+    backup = real_meta_path.read_text(encoding="utf-8")
+    try:
+        import json as _json
+        meta = _json.loads(backup)
+        # Tamper with the corpus_hash for one language
+        meta["languages"]["en"]["corpus_hash"] = "deadbeef" * 8
+        real_meta_path.write_text(_json.dumps(meta), encoding="utf-8")
+        search_mod._semantic_meta.cache_clear()
+        search_mod._semantic_matrix_for.cache_clear()
+        # Loader must return None for the tampered language
+        assert search_mod._semantic_matrix_for("en") is None
+        # Hybrid search still works (degrades to lexical)
+        r = api.retrieve_program_candidates("artificial intelligence", lang="en", top_k=3, mode="hybrid")
+        assert r["total"] > 0
+    finally:
+        real_meta_path.write_text(backup, encoding="utf-8")
         search_mod._semantic_meta.cache_clear()
         search_mod._semantic_matrix_for.cache_clear()
 

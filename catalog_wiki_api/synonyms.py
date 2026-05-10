@@ -118,19 +118,32 @@ PHRASE_SYNONYMS: dict[str, list[str]] = {
     "robótica": ["robotics", "electronic", "engineering"],
     "telecomunicaciones": ["telecom", "telecommunications", "engineering"],
 
-    # Project management / business ops
+    # Project management / business ops.
+    # Note: bare "lean" used to be expanded to project/management which
+    # over-matched against unrelated programs that mention "lean" loosely.
+    # Tightened to phrase contexts (lean six sigma, lean project, lean
+    # construction, lean management).
     "project management": ["project", "management"],
     "pmp": ["project", "management"],
     "scrum": ["project", "management", "agile"],
     "agile": ["project", "management", "agile"],
-    "lean": ["project", "management", "lean"],
+    "lean six sigma": ["project", "management", "lean", "six", "sigma"],
+    "lean project": ["project", "management", "lean"],
+    "lean construction": ["project", "management", "lean", "construction"],
+    "lean management": ["project", "management", "lean"],
     "dirección de proyectos": ["project", "management"],
     "gestión de proyectos": ["project", "management"],
 
-    # Philosophy / humanities
+    # Philosophy / humanities.
+    # Note: bare "thinking" expanded to thought/creativity/philosophy
+    # caught technical phrases like "thinking about technology in business",
+    # over-pulling philosophy programs. Tightened to phrase contexts only.
     "ethics": ["philosophy", "ethics"],
     "humanities": ["philosophy", "humanities"],
-    "thinking": ["thought", "creativity", "philosophy"],
+    "critical thinking": ["thought", "creativity", "philosophy"],
+    "creative thinking": ["thought", "creativity"],
+    "design thinking": ["thought", "creativity", "innovation"],
+    "thinking and creativity": ["thought", "creativity", "philosophy"],
     "filosofía": ["philosophy", "humanities"],
     "ética": ["philosophy", "ethics"],
 

@@ -190,12 +190,25 @@ def search_programs(
     filters: dict[str, str | None] | None = None,
     top_k: int = 10,
     lang: str = "en",
+    *,
+    mode: str | None = None,
 ) -> ProgramSearchPayload:
     """Hybrid (BM25 + cosine) search over the program corpus, with filters.
 
     This is the primary student-facing retrieval function. The default
-    ranker is hybrid; `LASALLE_RANKER_MODE` can switch to lexical-only,
-    semantic-only, or the legacy token-overlap scorer for ablation.
+    ranker is hybrid; ``LASALLE_RANKER_MODE`` env var sets the process
+    default; the per-call ``mode=`` argument overrides it without
+    mutating any global state.
+
+    Args:
+        query: Free-text query.
+        filters: Optional dict {level, area, modality, language}.
+        top_k: Max results to return.
+        lang: ``"en"`` or ``"es"``.
+        mode: Per-call ranker override — ``"hybrid"`` (default),
+            ``"lexical"`` / ``"bm25"``, ``"semantic"``, or
+            ``"token_overlap"`` (legacy). ``None`` uses the process
+            default. Request-scoped: safe under concurrent calls.
     """
     _check_lang(lang)
     filters = filters or {}
@@ -207,7 +220,7 @@ def search_programs(
         modality=filters.get("modality"),
         language=filters.get("language"),
     )
-    ranked = rank_programs(query, pool, top_k=top_k)
+    ranked = rank_programs(query, pool, top_k=top_k, mode=mode)
     return {
         "query": query,
         "results": [_to_summary(p) for _, p in ranked],
@@ -227,10 +240,10 @@ def retrieve_program_candidates(
 ) -> ProgramSearchPayload:
     """Agent-facing retrieval entrypoint (Phase 4).
 
-    Wraps :func:`search_programs` with a per-call ``mode`` override. The
-    Phase 4 agno tool calls this and forwards the typed payload to the
-    LLM unchanged. Keep agent-side code thin: the retrieval logic, blend
-    weights, and intent prior all live here, behind the v1 API contract.
+    Thin alias for :func:`search_programs` with a per-call ``mode``
+    override. The Phase 4 agno tool calls this and forwards the typed
+    payload to the LLM unchanged. Request-scoped — does not mutate any
+    process-global state, so concurrent SSE queries cannot collide.
 
     Args:
         query:    natural-language student query (e.g. "machine learning bachelor").
@@ -243,19 +256,7 @@ def retrieve_program_candidates(
                   ``LASALLE_RANKER_MODE`` env var (also defaulting to
                   "hybrid").
     """
-    if mode is None:
-        return search_programs(query, filters=filters, top_k=top_k, lang=lang)
-    # Per-call override via env var
-    import os
-    previous = os.environ.get("LASALLE_RANKER_MODE")
-    os.environ["LASALLE_RANKER_MODE"] = mode
-    try:
-        return search_programs(query, filters=filters, top_k=top_k, lang=lang)
-    finally:
-        if previous is None:
-            os.environ.pop("LASALLE_RANKER_MODE", None)
-        else:
-            os.environ["LASALLE_RANKER_MODE"] = previous
+    return search_programs(query, filters=filters, top_k=top_k, lang=lang, mode=mode)
 
 
 _AREA_LABELS = {

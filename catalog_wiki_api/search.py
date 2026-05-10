@@ -336,10 +336,42 @@ def _semantic_matrix_for(lang: str):
         if vectors.shape[0] != len(ids):
             log.warning("Semantic sidecar shape mismatch for lang=%r — falling back.", lang)
             return None
+        # Identity-signature check: catches stale sidecar against a wiki
+        # that has had programs added/removed since the embeddings were built.
+        expected_sig = lang_meta.get("corpus_hash")
+        if expected_sig:
+            actual_sig = _runtime_identity_signature(
+                ids,
+                meta.get("model_name", EXPECTED_MODEL_NAME),
+            )
+            if actual_sig != expected_sig:
+                log.warning(
+                    "Semantic sidecar identity-signature mismatch for lang=%r "
+                    "(expected=%s actual=%s) — falling back to lexical-only. "
+                    "Rebuild with `uv run python -m scripts.build_embeddings`.",
+                    lang, expected_sig[:12], actual_sig[:12],
+                )
+                return None
         return vectors, ids
     except Exception as exc:
         log.warning("Could not load semantic sidecar for %r: %s", lang, exc)
         return None
+
+
+def _runtime_identity_signature(canonical_program_ids: list[str], model_name: str) -> str:
+    """Cheap signature mirroring the build-time signature in
+    ``scripts/build_embeddings.py::_identity_signature``. If the wiki has
+    different program ids than the sidecar was built from, the signature
+    mismatches and we fall back to lexical-only.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    h.update(model_name.encode("utf-8"))
+    h.update(b"\x00")
+    for pid in sorted(canonical_program_ids):
+        h.update(b"\x00")
+        h.update(pid.encode("utf-8"))
+    return h.hexdigest()
 
 
 def _semantic_score(query: str, lang: str) -> dict[str, float] | None:
@@ -371,13 +403,24 @@ def _semantic_score(query: str, lang: str) -> dict[str, float] | None:
 RankerMode = Literal["hybrid", "lexical", "semantic", "token_overlap", "bm25"]
 
 
-def _ranker_mode() -> str:
-    """Default mode: hybrid. Overridden by LASALLE_RANKER_MODE env var.
+def _ranker_mode_default() -> str:
+    """Process-wide default ranker mode (used when no per-call ``mode`` is set).
 
-    Accepted values: hybrid (default), lexical (BM25 only), semantic (cosine
-    only), bm25 (alias for lexical), token_overlap (legacy fallback).
+    Resolution order:
+      1. Explicit ``mode=`` argument to ``rank_programs`` / ``score_program``
+         (per-call, request-scoped — this function is NOT consulted).
+      2. ``LASALLE_RANKER_MODE`` env var (process-wide default).
+      3. Built-in default: ``"hybrid"``.
+
+    Accepted values: hybrid, lexical (BM25 only), semantic (cosine only),
+    bm25 (alias for lexical), token_overlap (legacy fallback).
     """
     return os.environ.get("LASALLE_RANKER_MODE", "hybrid").lower()
+
+
+def _resolve_mode(mode: str | None) -> str:
+    """Pick the ranker mode for one call without touching global state."""
+    return mode.lower() if mode else _ranker_mode_default()
 
 
 # Hybrid blend: final = LEX_WEIGHT * normalized_bm25 + SEM_WEIGHT * cosine
@@ -385,14 +428,24 @@ LEX_WEIGHT = 0.55
 SEM_WEIGHT = 0.45
 
 
-def score_program(query: str, program: dict[str, Any]) -> float:
+def score_program(
+    query: str,
+    program: dict[str, Any],
+    *,
+    mode: str | None = None,
+) -> float:
     """Single-program score — used by tests and CLI ad-hoc.
 
-    For BM25 we still build/use the per-language index (small corpus).
+    Args:
+        query: Free-text query.
+        program: Frontmatter dict.
+        mode: Per-call ranker mode override. ``None`` falls back to the
+            process default (``LASALLE_RANKER_MODE`` env var, then ``"hybrid"``).
     """
     if not query:
         return 0.0
-    if _ranker_mode() == "token_overlap":
+    resolved = _resolve_mode(mode)
+    if resolved == "token_overlap":
         return _token_overlap_score(query, program)
     lang = (program.get("canonical_program_id", "") or "/").split("/", 1)[0] or "en"
     idx = _bm25_index_for(lang)
@@ -410,20 +463,27 @@ def rank_programs(
     query: str,
     programs: list[dict[str, Any]],
     top_k: int = 10,
+    *,
+    mode: str | None = None,
 ) -> list[tuple[float, dict[str, Any]]]:
     """Rank ``programs`` (a filtered subset) against ``query``.
 
-    Mode selection (env var ``LASALLE_RANKER_MODE``):
-        hybrid (default)  : 0.55 * BM25 + 0.45 * cosine + intent prior
-        lexical / bm25    : BM25 only + intent prior
-        semantic          : cosine only (no synonym expansion)
-        token_overlap     : legacy fallback
+    Args:
+        query: Free-text query.
+        programs: Pre-filtered list of program frontmatter dicts.
+        top_k: Max results to return.
+        mode: Per-call ranker mode override (request-scoped, no global mutation):
+            ``hybrid`` (default)  → 0.55 * BM25 + 0.45 * cosine + intent prior
+            ``lexical`` / ``bm25`` → BM25 only + intent prior
+            ``semantic``          → cosine only (no synonym expansion)
+            ``token_overlap``     → legacy fallback
+            ``None``              → process default (``LASALLE_RANKER_MODE`` env, else ``hybrid``).
     """
     if not query or not programs:
         return []
 
-    mode = _ranker_mode()
-    if mode == "token_overlap":
+    resolved = _resolve_mode(mode)
+    if resolved == "token_overlap":
         scored = [(_token_overlap_score(query, p), p) for p in programs]
         scored = [(s, p) for s, p in scored if s > 0]
         scored.sort(key=lambda x: -x[0])
@@ -450,12 +510,12 @@ def rank_programs(
 
     # Semantic (cosine) scores — only if mode wants them
     sem: dict[str, float] | None = None
-    if mode in ("hybrid", "semantic"):
+    if resolved in ("hybrid", "semantic"):
         sem = _semantic_score(query, lang)
         # If the sidecar is unavailable, gracefully degrade to lexical
-        if sem is None and mode == "semantic":
+        if sem is None and resolved == "semantic":
             log.warning("Semantic sidecar unavailable; degrading to BM25 for this query.")
-            mode = "lexical"
+            resolved = "lexical"
 
     # Combine. Both signals are pool-normalised to [0, 1] so a rare-but-
     # high BM25 hit doesn't always crush a strong semantic match.
@@ -475,9 +535,9 @@ def rank_programs(
         pid = p.get("canonical_program_id")
         lex_s = norm_lex.get(pid, 0.0)
         sem_s = norm_sem.get(pid, 0.0)
-        if mode == "lexical" or mode == "bm25":
+        if resolved in ("lexical", "bm25"):
             base = lex_s
-        elif mode == "semantic":
+        elif resolved == "semantic":
             base = sem_s
         else:  # hybrid
             base = LEX_WEIGHT * lex_s + SEM_WEIGHT * sem_s

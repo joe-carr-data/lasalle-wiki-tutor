@@ -29,6 +29,15 @@ from catalog_wiki_api import CatalogApiError
 
 logger = logging.getLogger(__name__)
 
+# Generic message returned to the LLM when an unexpected exception is caught.
+# We deliberately do NOT include ``str(exc)`` because exception strings can
+# leak internal paths, secrets, or stack-trace fragments. The full
+# traceback is captured via ``logger.exception`` for operator triage.
+_GENERIC_ERROR_MSG = (
+    "An unexpected error occurred while running this tool. Please retry "
+    "with a different query, or escalate to admissions if the issue persists."
+)
+
 
 # ---------------------------------------------------------------------------
 # Names exported for tool_result_queues bookkeeping
@@ -69,6 +78,31 @@ def _summary_of(payload: dict | list, *, head: int = 200) -> str:
     return s if len(s) <= head else s[: head - 3] + "..."
 
 
+def _claim_call_id(agent: Any, tool_name: str) -> str | None:
+    """Atomically claim the call_id of the oldest unclaimed active tool by name.
+
+    The framework (``BaseStreamingAgent`` + ``OpenAIEventInterceptor``)
+    populates ``agent._active_tools[call_id] = {"name", "started_at", ...}``
+    *before* dispatching the tool function. A tool function calling this
+    synchronously (no ``await`` between dispatch and the call) gets its
+    own call_id, even when multiple same-named tools run in parallel and
+    finish out of order.
+
+    We mark the entry with ``_claimed=True`` so a sibling parallel call
+    can't grab the same entry. The framework still pops the entry on
+    ``on_tool_result`` (exact call_id match path), so this flag is
+    transient.
+    """
+    active = getattr(agent, "_active_tools", None)
+    if not active:
+        return None
+    for cid, info in active.items():
+        if info.get("name") == tool_name and not info.get("_claimed"):
+            info["_claimed"] = True
+            return cid
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
@@ -82,12 +116,12 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
     causes a ``TOOL_END`` SSE event to fire.
     """
 
-    async def _emit_end(name: str, payload_str: str) -> None:
+    async def _emit_end(name: str, payload_str: str, call_id: str | None) -> None:
         try:
             await agent.on_tool_result(
                 tool_name=name,
                 summary=payload_str[:500],
-                call_id=None,  # FIFO match by name; only one call active at a time
+                call_id=call_id,
             )
         except Exception as exc:  # pragma: no cover — best-effort
             logger.warning("[catalog_tools] on_tool_result(%s) raised: %s", name, exc)
@@ -130,6 +164,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         Returns:
             JSON: ``{"ok": True, "query": ..., "total": N, "results": [...]}``.
         """
+        call_id = _claim_call_id(agent, "search_programs")
         try:
             filters = {"level": level, "area": area, "modality": modality}
             payload = api.search_programs(query, filters=filters, top_k=top_k, lang=lang)
@@ -146,8 +181,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("search_programs failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("search_programs", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("search_programs", result, call_id)
         return result
 
     async def list_programs(
@@ -177,6 +214,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         Returns:
             JSON: ``{"ok": True, "total": N, "programs": [...], ...}``.
         """
+        call_id = _claim_call_id(agent, "list_programs")
         try:
             payload = api.list_programs(
                 level=level, area=area, modality=modality, language=language,
@@ -188,8 +226,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("list_programs failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("list_programs", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("list_programs", result, call_id)
         return result
 
     async def get_index_facets(lang: str = "en") -> str:
@@ -204,6 +244,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         Returns:
             JSON: ``{"ok": True, "areas": [...], "levels": [...], ...}``.
         """
+        call_id = _claim_call_id(agent, "get_index_facets")
         try:
             payload = api.get_index_facets(lang=lang)
             result = _json({"ok": True, **payload})
@@ -211,8 +252,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_index_facets failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_index_facets", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_index_facets", result, call_id)
         return result
 
     # ──────────────────────────────────────────────────────────────────
@@ -237,6 +280,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: program detail with frontmatter + ``overview_md`` (and
             ``sections`` if requested).
         """
+        call_id = _claim_call_id(agent, "get_program")
         try:
             payload = api.get_program(program_id, include_sections=include_sections)
             result = _json({"ok": True, **payload})
@@ -244,8 +288,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_program failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_program", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_program", result, call_id)
         return result
 
     async def get_program_section(program_id: str, section: str) -> str:
@@ -263,6 +309,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         Returns:
             JSON: ``{"ok": True, "section": ..., "body_markdown": "..."}``.
         """
+        call_id = _claim_call_id(agent, "get_program_section")
         try:
             payload = api.get_program_section(program_id, section)
             result = _json({"ok": True, **payload})
@@ -270,8 +317,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_program_section failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_program_section", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_program_section", result, call_id)
         return result
 
     async def get_curriculum(program_id: str) -> str:
@@ -288,6 +337,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: ``{"ok": True, "years": [{"year": ..., "sections":
             [{"semester": ..., "subjects": [...]}]}, ...]}``.
         """
+        call_id = _claim_call_id(agent, "get_curriculum")
         try:
             payload = api.get_curriculum(program_id)
             result = _json({"ok": True, **payload})
@@ -295,8 +345,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_curriculum failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_curriculum", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_curriculum", result, call_id)
         return result
 
     async def get_subject(subject_id: str) -> str:
@@ -312,6 +364,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: subject detail (description, prerequisites, objectives,
             contents, methodology, evaluation, etc.).
         """
+        call_id = _claim_call_id(agent, "get_subject")
         try:
             payload = api.get_subject(subject_id)
             result = _json({"ok": True, **payload})
@@ -319,8 +372,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_subject failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_subject", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_subject", result, call_id)
         return result
 
     # ──────────────────────────────────────────────────────────────────
@@ -342,6 +397,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             duration, languages_of_instruction, schedule, location,
             start_date, subject_count) so the LLM can render a table.
         """
+        call_id = _claim_call_id(agent, "compare_programs")
         try:
             payload = api.compare_programs(program_ids)
             result = _json({"ok": True, **payload})
@@ -349,8 +405,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("compare_programs failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("compare_programs", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("compare_programs", result, call_id)
         return result
 
     # ──────────────────────────────────────────────────────────────────
@@ -371,6 +429,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
         Returns:
             JSON: ``{"ok": True, "title": ..., "body_markdown": "..."}``.
         """
+        call_id = _claim_call_id(agent, "get_faq")
         try:
             payload = api.get_faq(lang=lang)
             result = _json({"ok": True, **payload})
@@ -378,8 +437,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_faq failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_faq", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_faq", result, call_id)
         return result
 
     async def get_glossary_entry(term: str, lang: str = "en") -> str:
@@ -397,6 +458,7 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             JSON: ``{"ok": True, "entry": {...}}`` or
             ``{"ok": True, "entry": null}`` if not found.
         """
+        call_id = _claim_call_id(agent, "get_glossary_entry")
         try:
             entry = api.get_glossary_entry(term, lang=lang)
             result = _json({"ok": True, "entry": entry})
@@ -404,8 +466,10 @@ def build_catalog_tools(agent: Any) -> list[Callable]:
             result = _error(exc.code, exc.message)
         except Exception as exc:  # pragma: no cover
             logger.exception("get_glossary_entry failed")
-            result = _error("internal_error", str(exc))
-        await _emit_end("get_glossary_entry", result)
+            # Don't leak internal exception strings to the LLM. The
+            # full traceback is captured by logger.exception above.
+            result = _error("internal_error", _GENERIC_ERROR_MSG)
+        await _emit_end("get_glossary_entry", result, call_id)
         return result
 
     return [

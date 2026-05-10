@@ -135,13 +135,24 @@ def _build_text_for_program(fm: dict[str, Any], extras: dict[str, str]) -> str:
     return text[:MAX_TEXT_CHARS]
 
 
-def _corpus_hash(texts: list[str], model_name: str) -> str:
-    """Stable hash that captures input texts + model — used for sidecar invalidation."""
+def _identity_signature(canonical_program_ids: list[str], model_name: str) -> str:
+    """Cheap, stable signature of (program identity set + model name).
+
+    Captures program presence and model identity but **not** the body
+    content — so minor markdown edits to a program don't invalidate the
+    sidecar. Catching content drift is the responsibility of
+    ``extractor_version`` / a separate content hash if we ever need it.
+
+    Used at sidecar build time and validated at runtime. If the runtime
+    catalog has different program ids than the sidecar was built from,
+    the signature mismatches and the semantic layer falls back to lexical.
+    """
     h = hashlib.sha256()
     h.update(model_name.encode("utf-8"))
-    for t in texts:
+    h.update(b"\x00")
+    for pid in sorted(canonical_program_ids):
         h.update(b"\x00")
-        h.update(t.encode("utf-8"))
+        h.update(pid.encode("utf-8"))
     return h.hexdigest()
 
 
@@ -197,7 +208,7 @@ def build(
 
         ids = [p[0] for p in pairs]
         texts = [p[2] for p in pairs]
-        chash = _corpus_hash(texts, model_name)
+        chash = _identity_signature(ids, model_name)
 
         console.print(f"  /{lang}/: embedding [bold]{len(texts)}[/bold] programs…")
         with Progress(
