@@ -4,6 +4,8 @@ import { ArrowUp, BookOpen, Square } from "./icons";
 interface ComposerProps {
   lang: "en" | "es";
   busy: boolean;
+  /** Bump to programmatically focus the textarea (e.g. global Cmd+K). */
+  focusToken?: number;
   onSend: (text: string) => void;
   onCancel: () => void;
 }
@@ -18,7 +20,7 @@ const META_COPY: Record<"en" | "es", string> = {
   es: "Basado en el catálogo de salleurl.edu",
 };
 
-export function Composer({ lang, busy, onSend, onCancel }: ComposerProps) {
+export function Composer({ lang, busy, focusToken, onSend, onCancel }: ComposerProps) {
   const [text, setText] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -29,6 +31,11 @@ export function Composer({ lang, busy, onSend, onCancel }: ComposerProps) {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
+
+  useEffect(() => {
+    if (focusToken === undefined) return;
+    taRef.current?.focus();
+  }, [focusToken]);
 
   function submit() {
     if (busy) return;

@@ -330,6 +330,7 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(initialSessionId ?? null);
   const lastSendRef = useRef<{ body: StreamRequestBody; turn: Turn } | null>(null);
+  const activeQueryIdRef = useRef<string | null>(null);
 
   // Keep sessionIdRef in sync with the reducer's view.
   if (state.sessionId !== sessionIdRef.current) {
@@ -341,6 +342,7 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     lastSendRef.current = { body, turn };
+    activeQueryIdRef.current = body.query_id;
 
     let firstDeltaSeen = false;
     try {
@@ -367,6 +369,7 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
       dispatch({ type: "turn/error", turnId: turn.id, message: msg });
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
+      if (activeQueryIdRef.current === body.query_id) activeQueryIdRef.current = null;
     }
   }, []);
 
@@ -400,7 +403,20 @@ export function useChatStream(initialSessionId?: string): UseChatStream {
   );
 
   const cancel = useCallback(() => {
+    const queryId = activeQueryIdRef.current;
     abortRef.current?.abort();
+    if (queryId) {
+      // Fire-and-forget — the SSE generator will yield `cancelled` once the
+      // server picks it up. We don't await; if the network is gone, the
+      // local AbortController already terminated the read so the UI advances.
+      void fetch("/api/wiki-tutor/v1/query/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query_id: queryId }),
+      }).catch(() => {
+        /* network failure during cancel is non-fatal — UI already aborted */
+      });
+    }
   }, []);
 
   const retry = useCallback(
