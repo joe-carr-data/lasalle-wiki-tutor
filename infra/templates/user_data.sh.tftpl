@@ -35,6 +35,7 @@ WIKI_RELEASE_TAG='${wiki_release_tag}'
 APP_DIR='${app_dir}'
 PARAM_OPENAI='${param_openai}'
 PARAM_ACCESS_TOKEN='${param_access_token}'
+PARAM_ADMIN_TOKEN='${param_admin_token}'
 AWS_REGION='${aws_region}'
 APP_USER='app'
 
@@ -131,6 +132,7 @@ cat > /usr/local/bin/refresh-app-env <<EOF_REFRESH
 set -euo pipefail
 OPENAI=\$(aws ssm get-parameter --with-decryption --region "$AWS_REGION" --name "$PARAM_OPENAI" --query Parameter.Value --output text)
 TOKEN=\$(aws ssm get-parameter --with-decryption --region "$AWS_REGION" --name "$PARAM_ACCESS_TOKEN" --query Parameter.Value --output text)
+ADMIN=\$(aws ssm get-parameter --with-decryption --region "$AWS_REGION" --name "$PARAM_ADMIN_TOKEN" --query Parameter.Value --output text)
 umask 077
 cat > "$APP_DIR/.env" <<ENV
 ENVIRONMENT=prod
@@ -139,6 +141,7 @@ TERMINAL_LOGS_ENABLED=False
 LOG_LEVEL=INFO
 OPENAI_API_KEY=\$OPENAI
 WIKI_TUTOR_ACCESS_TOKEN=\$TOKEN
+WIKI_TUTOR_ADMIN_TOKEN=\$ADMIN
 MONGO_URL=mongodb://localhost:27017
 MONGO_DATABASE=lasalle_catalog_assistant
 ENV

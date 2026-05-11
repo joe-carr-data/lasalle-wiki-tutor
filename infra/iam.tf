@@ -45,6 +45,7 @@ resource "aws_iam_role_policy" "read_secrets" {
         Resource = [
           aws_ssm_parameter.openai_api_key.arn,
           aws_ssm_parameter.access_token.arn,
+          aws_ssm_parameter.admin_token.arn,
         ]
       },
     ]

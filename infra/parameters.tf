@@ -33,3 +33,11 @@ resource "aws_ssm_parameter" "access_token" {
   value       = var.wiki_tutor_access_token
   tier        = "Standard"
 }
+
+resource "aws_ssm_parameter" "admin_token" {
+  name        = local.param_admin_token
+  description = "Operator-only secret gating /api/admin/* dashboard. Sent as the X-Admin-Token header on top of the loopback source check. Distinct from the evaluator token so a leaked evaluator secret never grants admin access."
+  type        = "SecureString"
+  value       = var.wiki_tutor_admin_token
+  tier        = "Standard"
+}

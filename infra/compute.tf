@@ -25,6 +25,7 @@ data "cloudinit_config" "user_data" {
       app_dir            = local.app_dir
       param_openai       = aws_ssm_parameter.openai_api_key.name
       param_access_token = aws_ssm_parameter.access_token.name
+      param_admin_token  = aws_ssm_parameter.admin_token.name
       aws_region         = var.aws_region
     })
   }

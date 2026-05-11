@@ -67,3 +67,9 @@ variable "wiki_tutor_access_token" {
   type        = string
   sensitive   = true
 }
+
+variable "wiki_tutor_admin_token" {
+  description = "Secondary secret gating /api/admin/* (the IP roster dashboard). Required as the X-Admin-Token header in addition to the loopback source check. Generate with the same `secrets.token_urlsafe(32)` recipe. Distribute only to operators, never to evaluators."
+  type        = string
+  sensitive   = true
+}

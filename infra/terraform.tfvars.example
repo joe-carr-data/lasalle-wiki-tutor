@@ -11,6 +11,11 @@ openai_api_key           = "sk-..."
 //   python -c "import secrets; print(secrets.token_urlsafe(32))"
 wiki_tutor_access_token  = "<32+ url-safe chars>"
 
+// Secondary operator-only token. Required as X-Admin-Token on /api/admin/*
+// in addition to the loopback source check. Generate the same way; share
+// only with operators, never with evaluators.
+wiki_tutor_admin_token   = "<32+ url-safe chars>"
+
 // Optional overrides (defaults are sensible):
 // aws_region        = "eu-west-1"
 // instance_type     = "t3.micro"

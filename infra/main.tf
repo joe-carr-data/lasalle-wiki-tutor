@@ -55,5 +55,6 @@ locals {
   name_prefix        = var.project
   param_openai       = "/${var.project}/openai-api-key"
   param_access_token = "/${var.project}/access-token"
+  param_admin_token  = "/${var.project}/admin-token"
   app_dir            = "/opt/app"
 }
