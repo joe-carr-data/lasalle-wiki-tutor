@@ -9,15 +9,13 @@ import { ReasoningTimeline } from "./components/ReasoningTimeline";
 import { MarkdownAnswer } from "./components/MarkdownAnswer";
 import { ConfirmDelete } from "./components/ConfirmDelete";
 import { JumpToLatest } from "./components/JumpToLatest";
-import { BrainCircuit, RotateCw } from "./components/icons";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { ReplayThread } from "./components/ReplayThread";
+import { RotateCw } from "./components/icons";
 import { useChatStream } from "./state/useChatStream";
 import { useConversations } from "./state/useConversations";
 import { useStickyScroll } from "./state/useStickyScroll";
 import { getUserId } from "./lib/userId";
 import type { Turn } from "./state/useChatStream";
-import type { ConversationDetail } from "./api/conversations";
 
 const ES_HINTS = /[áéíóúñ¿¡]|\b(qué|cómo|cuál|cuáles|para|grado|máster)\b/i;
 function detectLang(text: string): "en" | "es" {
@@ -263,11 +261,6 @@ function BasicTurns({
   );
 }
 
-const REPLAY_REMARK_PLUGINS = [remarkGfm];
-function ReplayMarkdown({ text }: { text: string }) {
-  return <ReactMarkdown remarkPlugins={REPLAY_REMARK_PLUGINS}>{text}</ReactMarkdown>;
-}
-
 function RetryButton({
   turn,
   lang,
@@ -285,77 +278,3 @@ function RetryButton({
   );
 }
 
-function ReplayThread({
-  detail,
-  lang,
-}: {
-  detail: ConversationDetail;
-  lang: "en" | "es";
-}) {
-  const someTurnHasTrace = detail.turns.some((t) => t.has_trace);
-  return (
-    <>
-      {!someTurnHasTrace && detail.turns.length > 0 && (
-        <div className="replay-banner">
-          {lang === "es"
-            ? "Saved · no se puede reproducir el razonamiento."
-            : "Saved · cannot replay reasoning."}
-        </div>
-      )}
-      {detail.turns.map((t) => (
-        <div key={t.run_id} className="turn">
-          <div className="msg msg-user">
-            <div className="msg-body">
-              <div className="bubble bubble-user">{t.user.text}</div>
-            </div>
-            <Avatar kind="user" />
-          </div>
-          <div className="msg msg-agent">
-            <Avatar kind="agent" />
-            <div className="msg-body">
-              {t.has_trace && t.reasoning.length > 0 && (
-                <div className="reasoning open">
-                  <div className="reasoning-chip" aria-disabled="true">
-                    <BrainCircuit className="ico-sm tl-thinking-icon" />
-                    <span className="reasoning-chip-label">
-                      {lang === "es" ? "Razonamiento guardado" : "Saved reasoning"}
-                    </span>
-                  </div>
-                  <div className="timeline">
-                    {t.reasoning.map((step, i) =>
-                      step.kind === "thought" ? (
-                        <div key={`th-${i}`} className="tl-step tl-thought tl-done">
-                          <BrainCircuit className="ico-sm tl-thinking-icon" />
-                          <div className="tl-thought-text">
-                            <ReplayMarkdown text={step.text || "…"} />
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={`tool-${i}`} className="tl-step tl-tool-row tl-done">
-                          <span className="tl-dot" />
-                          <span className="tl-tool">{step.name}</span>
-                          {step.args_display && (
-                            <span className="tl-arg">· {step.args_display}</span>
-                          )}
-                          {step.duration_display && (
-                            <span className="tl-meta">{step.duration_display}</span>
-                          )}
-                        </div>
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-              <MarkdownAnswer
-                text={t.agent.text}
-                streaming={false}
-                done={true}
-                lang={lang}
-              />
-            </div>
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}

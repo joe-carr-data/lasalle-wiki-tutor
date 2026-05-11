@@ -21,10 +21,15 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.auth import check_admin_rate_limit, require_admin
 from core.conversations_store import get_store
+
+
+def _serialize_dt(value: Any) -> Any:
+    return value.isoformat() if isinstance(value, datetime) else value
 
 logger = logging.getLogger(__name__)
 
@@ -72,4 +77,23 @@ async def conversations_for_ip(ip: str, limit: int = 100) -> dict[str, Any]:
         "ip": ip,
         "count": len(rows),
         "rows": rows,
+    }
+
+
+@router.get("/conversations/{session_id}")
+async def conversation_full(session_id: str) -> dict[str, Any]:
+    """Full transcript for one conversation, by session id.
+
+    Skips the user_id ownership check that the evaluator endpoint applies
+    (admin sees everything). Returns the same shape so the frontend can
+    reuse the existing transcript-render components.
+    """
+    store = get_store()
+    doc = await store.get_full(session_id=session_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return {
+        **doc,
+        "created_at": _serialize_dt(doc.get("created_at")),
+        "updated_at": _serialize_dt(doc.get("updated_at")),
     }
