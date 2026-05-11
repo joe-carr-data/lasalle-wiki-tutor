@@ -49,12 +49,13 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, field_validator
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import Response
 
 from agent import WikiTutorAgent, WikiTutorAgentConfig
 from config.settings import PROJECT_SETTINGS
 from core.base_sse_adapter import BaseSSEAdapter
-from core.auth import require_access_token
+from core.auth import check_stream_rate_limit, require_access_token
 from core.cancellation_registry import (
     cancel_query,
     register_query,
@@ -384,17 +385,50 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("LaSalle Wiki Tutor streaming shutting down.")
 
 
+# Environment-driven production hardening. ``ENVIRONMENT=local`` keeps the
+# developer-friendly defaults: /docs enabled, CORS open to the Vite dev
+# server, TrustedHost permissive. Anything else (``prod`` on the EC2 box,
+# ``dev`` etc.) tightens the surface: no /docs, CORS locked to PUBLIC_HOST,
+# TrustedHost rejects forged Host headers.
+_IS_LOCAL = PROJECT_SETTINGS.ENVIRONMENT == "local"
+
+if _IS_LOCAL:
+    _ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+    _ALLOWED_ORIGINS = [
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
+else:
+    _ALLOWED_HOSTS = [PROJECT_SETTINGS.PUBLIC_HOST]
+    _ALLOWED_ORIGINS = [f"https://{PROJECT_SETTINGS.PUBLIC_HOST}"]
+
 app = FastAPI(
     title="LaSalle Wiki Tutor — Streaming API",
     version="0.1.0",
     lifespan=_lifespan,
+    # Hide the API schema in non-local environments. The token is the only
+    # thing standing between an attacker and the API; we don't owe them the
+    # parameter shapes too.
+    docs_url="/docs" if _IS_LOCAL else None,
+    redoc_url="/redoc" if _IS_LOCAL else None,
+    openapi_url="/openapi.json" if _IS_LOCAL else None,
 )
+# Reject requests whose Host header isn't the deployed domain. Without this,
+# a client hitting the EIP directly with a forged Host can poison redirects
+# and Host-keyed caches. Caddy already filters at the edge, but this is a
+# belt-and-braces guard if the topology ever gains a second proxy.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    # The access token is in a custom header, not in cookies — credentialed
+    # CORS would be wrong here, and `*` + credentials is spec-rejected by
+    # every modern browser.
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Access-Token"],
 )
 # Compress text responses on the fly. SSE responses are excluded by
 # starlette's GZipMiddleware (it skips streaming responses with
@@ -411,7 +445,10 @@ async def health() -> dict[str, Any]:
 
 @app.post(
     "/api/wiki-tutor/v1/query/stream",
-    dependencies=[Depends(require_access_token)],
+    dependencies=[
+        Depends(check_stream_rate_limit),
+        Depends(require_access_token),
+    ],
 )
 async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
     session_id = request.session_id or str(uuid.uuid4())
@@ -541,6 +578,12 @@ if _FRONTEND_INDEX.exists():
         # in registration order. This guard is belt-and-braces for nested
         # paths Starlette might still route here.
         if full_path.startswith(("api/", "health", "assets/")):
+            raise HTTPException(status_code=404, detail="not found")
+        # When the auto-docs are disabled in non-local environments we also
+        # refuse to serve the SPA shell at those paths — a hardened deploy
+        # should look identical to the world whether the docs are off or
+        # the path simply doesn't exist.
+        if full_path in {"docs", "redoc", "openapi.json"}:
             raise HTTPException(status_code=404, detail="not found")
         return _index_response()
 else:

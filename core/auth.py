@@ -86,44 +86,54 @@ async def require_access_token(
     raise HTTPException(status_code=401, detail="invalid access token")
 
 
-# ── Per-IP rate limiter for /api/auth/validate ────────────────
+# ── Per-IP token-bucket rate limiter ──────────────────────────
 #
 # Plain in-memory token bucket per source IP. Process-local, so multi-process
 # deploys would need Redis — but the demo runs in a single uvicorn worker, so
-# this is fine. 10 attempts per 60-second window is enough for fat-fingering
-# while making brute-force of a 32-char random token take ~10^60 years.
+# this is fine. Two named buckets share the same machinery on independent
+# limits: `auth_validate` (10/min, brute-force guard on the token check) and
+# `stream` (60/min, gpt-5.4-spend guard on the SSE endpoint).
 
-_RATE_LIMIT_MAX_ATTEMPTS = 10
-_RATE_LIMIT_WINDOW_S = 60.0
-_attempts: dict[str, Deque[float]] = defaultdict(deque)
+_BUCKETS: dict[str, dict[str, Deque[float]]] = defaultdict(lambda: defaultdict(deque))
+
+_LIMITS: dict[str, tuple[int, float]] = {
+    "auth_validate": (10, 60.0),   # 10 attempts / 60s — token brute-force guard
+    "stream": (60, 60.0),          # 60 stream calls / 60s — gpt-5.4 spend cap
+}
 
 
 def _client_ip(request: Request) -> str:
-    """Best-effort source IP. Honors X-Forwarded-For (Caddy/ALB sets it)."""
+    """Best-effort source IP. Honors X-Forwarded-For (Caddy/ALB sets it).
+
+    Caddy on the same box is the only proxy in front of us, so the leftmost
+    XFF entry is the real client. If a second proxy is ever added, this
+    helper must be revisited — the leftmost entry is attacker-controlled
+    when more than one trusted hop sits between client and app.
+    """
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
-def check_rate_limit(request: Request) -> None:
-    """Raise 429 if the source IP has exceeded its attempt budget.
+def _enforce_bucket(request: Request, bucket_name: str) -> None:
+    """Raise 429 if the source IP has exceeded the named bucket's budget.
 
-    Side effect: records the attempt in the bucket. Call this on every hit,
-    not just on failure — otherwise an attacker can probe for free as long as
-    they happen to guess right (which they won't, but defense in depth).
+    Side effect: records the attempt in the bucket. Call on every hit, not
+    just on failure — otherwise an attacker can probe for free as long as
+    they happen to guess right.
     """
+    max_attempts, window_s = _LIMITS[bucket_name]
     ip = _client_ip(request)
     now = time.monotonic()
-    bucket = _attempts[ip]
+    bucket = _BUCKETS[bucket_name][ip]
 
-    # Drop expired entries from the left.
-    cutoff = now - _RATE_LIMIT_WINDOW_S
+    cutoff = now - window_s
     while bucket and bucket[0] < cutoff:
         bucket.popleft()
 
-    if len(bucket) >= _RATE_LIMIT_MAX_ATTEMPTS:
-        retry_after = int(_RATE_LIMIT_WINDOW_S - (now - bucket[0])) + 1
+    if len(bucket) >= max_attempts:
+        retry_after = int(window_s - (now - bucket[0])) + 1
         raise HTTPException(
             status_code=429,
             detail="too many attempts; try again later",
@@ -133,8 +143,24 @@ def check_rate_limit(request: Request) -> None:
     bucket.append(now)
 
 
+def check_rate_limit(request: Request) -> None:
+    """Per-IP rate limit on `/api/auth/validate` — token brute-force guard."""
+    _enforce_bucket(request, "auth_validate")
+
+
+def check_stream_rate_limit(request: Request) -> None:
+    """Per-IP rate limit on the SSE stream — protects against runaway spend.
+
+    A leaked or compromised access token would otherwise allow unlimited
+    `gpt-5.4` calls until the operator notices and rotates. The 60/min cap
+    is far above typical human use and far below "burn the budget overnight".
+    """
+    _enforce_bucket(request, "stream")
+
+
 __all__ = [
     "require_access_token",
     "is_token_valid",
     "check_rate_limit",
+    "check_stream_rate_limit",
 ]

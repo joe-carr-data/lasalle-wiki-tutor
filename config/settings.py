@@ -97,7 +97,11 @@ class ProjectSettings(BaseSettings):
 
     ENVIRONMENT: str = Field(
         default="local",
-        description="Environment: 'local' or 'dev' (controls MongoDB connection scheme)",
+        description="Environment: 'local' for dev (open CORS, /docs enabled), anything else for prod (locked-down)",
+    )
+    PUBLIC_HOST: str = Field(
+        default="lasalle.generateeve.com",
+        description="Public hostname this app is served from. Used for CORS allow-list and TrustedHostMiddleware in non-local environments.",
     )
     ASSISTANT_NAME: str = Field(
         default="LaSalle Wiki Tutor",
