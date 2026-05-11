@@ -401,7 +401,12 @@ if _IS_LOCAL:
         "http://127.0.0.1:8000",
     ]
 else:
-    _ALLOWED_HOSTS = [PROJECT_SETTINGS.PUBLIC_HOST]
+    # Loopback hosts stay in the prod allow-list so the systemd healthcheck,
+    # the docker HEALTHCHECK, and any local smoke-test curl can reach /health
+    # without forging the public Host header. Caddy still routes external
+    # traffic with the canonical Host, so this does not loosen the gate for
+    # anything reachable from the public internet.
+    _ALLOWED_HOSTS = [PROJECT_SETTINGS.PUBLIC_HOST, "127.0.0.1", "localhost"]
     _ALLOWED_ORIGINS = [f"https://{PROJECT_SETTINGS.PUBLIC_HOST}"]
 
 app = FastAPI(
