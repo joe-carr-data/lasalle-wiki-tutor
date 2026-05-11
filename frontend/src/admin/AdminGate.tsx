@@ -33,12 +33,14 @@ export function AdminGate({ onAuthenticated }: AdminGateProps) {
       onAuthenticated();
       return;
     }
-    if (result.reason === "wrong_origin") {
-      setError(
-        "This dashboard is only reachable through an SSM port-forward. Run `aws ssm start-session --document-name AWS-StartPortForwardingSession ...` from your laptop, then visit http://127.0.0.1:8000/admin.",
-      );
-    } else if (result.reason === "invalid") {
+    if (result.reason === "invalid") {
       setError("That admin token doesn't match. Try again.");
+    } else if (result.reason === "rate_limited") {
+      setError(`Too many attempts. Try again in ${result.retryAfter ?? 60}s.`);
+    } else if (result.reason === "unconfigured") {
+      setError(
+        "The server has no admin token configured. Ask the operator to set WIKI_TUTOR_ADMIN_TOKEN.",
+      );
     } else {
       setError("Couldn't reach the server. Check your connection.");
     }
@@ -51,8 +53,8 @@ export function AdminGate({ onAuthenticated }: AdminGateProps) {
         <div className="admin-eyebrow">LaSalle Wiki Tutor</div>
         <h1 className="admin-title">Operator dashboard</h1>
         <p className="admin-body">
-          IP roster and conversation drill-down. Loopback-only by design;
-          this page is reachable from the public URL only as a static shell.
+          IP roster and conversation drill-down for the LaSalle Wiki Tutor
+          deployment.
         </p>
 
         <input

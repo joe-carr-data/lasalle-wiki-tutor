@@ -23,7 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from core.auth import require_admin
+from core.auth import check_admin_rate_limit, require_admin
 from core.conversations_store import get_store
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/admin",
     tags=["admin"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[
+        Depends(check_admin_rate_limit),
+        Depends(require_admin),
+    ],
     include_in_schema=False,
 )
 

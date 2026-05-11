@@ -1,10 +1,8 @@
 // Admin auth helpers. Parallel to lib/auth.ts but with a separate storage
-// key and a separate header name so an admin can sign in to /admin without
-// touching the evaluator token in /api/wiki-tutor's flow. The admin endpoint
-// is reachable only via SSM port-forward (Caddy 404s the public path) so
-// loading this page from https://lasalle.generateeve.com/admin will succeed
-// at fetching the bundle but every API call will fail with 404 — that's
-// the intended outcome.
+// key and a separate header name so the admin session is fully independent
+// of the evaluator session. The admin token is the only gate on
+// /api/admin/* — per-IP rate limiting (server-side) is the second layer
+// that bounds brute-force probing.
 
 const STORAGE_KEY = "wiki-tutor.admin-token";
 const HEADER = "X-Admin-Token";
@@ -63,16 +61,16 @@ export async function adminFetch(
  * just classify the response:
  *
  *   200 → valid
- *   401 → token wrong (or unset on the box)
- *   404 → reached Caddy's edge filter — caller is on the public URL,
- *         not a loopback port-forward. Tell them where to go.
+ *   401 → token wrong
+ *   429 → rate-limited
+ *   503 → server has no token configured (env var unset)
  *   other → network or server error
  */
 export async function validateAdminToken(
   token: string,
 ): Promise<
   | { ok: true }
-  | { ok: false; reason: "invalid" | "wrong_origin" | "network" }
+  | { ok: false; reason: "invalid" | "rate_limited" | "unconfigured" | "network"; retryAfter?: number }
 > {
   let res: Response;
   try {
@@ -83,7 +81,11 @@ export async function validateAdminToken(
     return { ok: false, reason: "network" };
   }
   if (res.status === 200) return { ok: true };
-  if (res.status === 404) return { ok: false, reason: "wrong_origin" };
   if (res.status === 401) return { ok: false, reason: "invalid" };
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get("Retry-After")) || 60;
+    return { ok: false, reason: "rate_limited", retryAfter };
+  }
+  if (res.status === 503) return { ok: false, reason: "unconfigured" };
   return { ok: false, reason: "network" };
 }

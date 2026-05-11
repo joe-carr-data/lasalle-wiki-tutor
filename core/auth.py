@@ -99,6 +99,7 @@ _BUCKETS: dict[str, dict[str, Deque[float]]] = defaultdict(lambda: defaultdict(d
 _LIMITS: dict[str, tuple[int, float]] = {
     "auth_validate": (10, 60.0),   # 10 attempts / 60s — token brute-force guard
     "stream": (60, 60.0),          # 60 stream calls / 60s — gpt-5.4 spend cap
+    "admin": (30, 60.0),           # 30 admin calls / 60s — DoS + probe guard on the public admin surface
 }
 
 
@@ -158,7 +159,18 @@ def check_stream_rate_limit(request: Request) -> None:
     _enforce_bucket(request, "stream")
 
 
-# ── Admin endpoints: loopback + optional separate token ────────
+def check_admin_rate_limit(request: Request) -> None:
+    """Per-IP rate limit on the admin surface — DoS and probe guard.
+
+    The admin token is 32 url-safe chars (~190 bits) so brute-forcing it
+    is computationally infeasible anyway. This bucket exists so an
+    attacker can't pound the endpoint for hours to fish for timing leaks
+    or to amplify a DoS into Mongo reads.
+    """
+    _enforce_bucket(request, "admin")
+
+
+# ── Admin endpoints: token gate, public surface ────────────────
 
 
 def _expected_admin_token() -> Optional[str]:
@@ -166,41 +178,31 @@ def _expected_admin_token() -> Optional[str]:
     return raw or None
 
 
-# Loopback IPs that are allowed to reach the admin surface. Reaching the
-# box itself requires shell access via SSM, so loopback is a strong gate
-# on its own; the optional ``WIKI_TUTOR_ADMIN_TOKEN`` is belt-and-braces
-# in case the operator forwards the port locally.
-_LOOPBACK_IPS = {"127.0.0.1", "::1", "localhost"}
-
-
 async def require_admin(
-    request: Request,
     x_admin_token: Optional[str] = Header(default=None),
 ) -> None:
     """FastAPI dependency for ``/api/admin/*`` routes.
 
-    Two checks compose:
+    The admin surface is reachable from the public internet — the only
+    gate is the ``WIKI_TUTOR_ADMIN_TOKEN`` shared secret presented as the
+    ``X-Admin-Token`` header. Per-IP rate limiting (see
+    ``check_admin_rate_limit``) is the second layer that bounds
+    brute-force probing and DoS.
 
-    1. The request's TCP source must be loopback. We deliberately ignore
-       ``X-Forwarded-For`` here — Caddy appends rather than replaces it,
-       so a public attacker could send ``X-Forwarded-For: 127.0.0.1`` and
-       slip past an XFF-trusting check. The actual gate against public
-       traffic is the Caddy site block, which refuses to proxy
-       ``/api/admin/*`` at all. This check is the second layer for the
-       case where uvicorn is reachable directly (SSM port-forward, local
-       dev, or a future deployment without Caddy in front).
-    2. If ``WIKI_TUTOR_ADMIN_TOKEN`` is set, the ``X-Admin-Token`` header
-       must match it via constant-time comparison. If unset, the gate is
-       loopback-only.
+    In non-local environments the env var must be set; falling open on
+    an unset secret would expose the dashboard to the world. Local dev
+    (``ENVIRONMENT=local``) with an empty token falls open so the
+    dashboard works without setup.
     """
-    tcp_source = request.client.host if request.client else ""
-    if tcp_source not in _LOOPBACK_IPS:
-        # 404 (not 403) — don't confirm the route exists.
-        raise HTTPException(status_code=404, detail="not found")
-
     expected = _expected_admin_token()
     if expected is None:
-        return
+        env = os.getenv("ENVIRONMENT", "local")
+        if env == "local":
+            return
+        raise HTTPException(
+            status_code=503,
+            detail="admin surface is not configured; set WIKI_TUTOR_ADMIN_TOKEN",
+        )
     if not x_admin_token or not _tokens_match(x_admin_token, expected):
         raise HTTPException(status_code=401, detail="invalid admin token")
 
@@ -211,5 +213,6 @@ __all__ = [
     "is_token_valid",
     "check_rate_limit",
     "check_stream_rate_limit",
+    "check_admin_rate_limit",
     "_client_ip",
 ]
