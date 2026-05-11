@@ -77,12 +77,14 @@ class TurnTraceRecorder:
         user_id: str,
         run_id: str,
         lang: str,
+        client_ip: str = "",
     ) -> None:
         self._doc: dict[str, Any] = {
             "_id": run_id,
             "session_id": session_id,
             "user_id": user_id,
             "lang": lang,
+            "client_ip": client_ip,
             "started_at": _now_ms(),
             "thoughts": [],
             "tool_timings": [],

@@ -165,6 +165,19 @@ cat > /etc/caddy/Caddyfile <<EOF_CADDY
 $DOMAIN_NAME {
     encode zstd gzip
 
+    # Edge filter: /api/admin/* is the operator-only inspection surface
+    # (IP roster, conversation drill-down). It is reachable ONLY via an
+    # SSM port-forward directly to 127.0.0.1:8000 inside the box, so
+    # Caddy must refuse to proxy it from the public internet. The app
+    # also gates the routes behind a loopback + token check, but with
+    # Caddy on the same host both public traffic and SSM port-forwards
+    # look like 127.0.0.1 at the TCP layer — this rule is what actually
+    # keeps the admin surface off the internet. 404 (not 403) so the
+    # surface does not even confirm it exists.
+    handle /api/admin/* {
+        respond "Not Found" 404
+    }
+
     # SSE: disable response buffering and lengthen idle timeouts so long
     # agent runs (15-30s) don't get cut off by Caddy's defaults.
     reverse_proxy 127.0.0.1:8000 {

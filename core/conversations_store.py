@@ -37,6 +37,13 @@ logger = logging.getLogger(__name__)
 AGNO_SESSIONS = "wiki_tutor_agent_sessions"
 META = "wiki_tutor_conversations_meta"
 TRACES = "wiki_tutor_turn_traces"
+# Client-IP audit log. Separate collection so the IP fields (which are PII
+# under GDPR for EU users) carry their own retention policy independent of
+# the conversation history. One document per (session_id, ip) pair; the
+# document's ``last_seen_at`` field drives a TTL index that prunes records
+# 30 days after the last activity on that pair.
+IP_RECORDS = "wiki_tutor_ip_records"
+IP_RECORDS_TTL_DAYS = 30
 
 # Heuristic title generation — first user message, articles stripped.
 _LEADING_ARTICLES = re.compile(
@@ -87,11 +94,26 @@ class ConversationsStore:
     def traces(self):
         return self._db[TRACES]
 
+    @property
+    def ip_records(self):
+        return self._db[IP_RECORDS]
+
     async def ensure_indexes(self) -> None:
         """Create the indexes we read against. Idempotent."""
         try:
             await self.sessions.create_index([("user_id", 1), ("updated_at", -1)])
             await self.meta.create_index([("deleted_at", 1)])
+            # TTL index on the IP audit log. ``last_seen_at`` is a datetime;
+            # Mongo deletes the document N seconds after that timestamp.
+            # Documented as "the IP record disappears 30 days after the
+            # last turn on that (session, ip) pair".
+            await self.ip_records.create_index(
+                [("last_seen_at", 1)],
+                expireAfterSeconds=IP_RECORDS_TTL_DAYS * 24 * 3600,
+                name="ip_records_ttl",
+            )
+            await self.ip_records.create_index([("ip", 1), ("last_seen_at", -1)])
+            await self.ip_records.create_index([("session_id", 1)])
         except PyMongoError as exc:
             # Indexes are best-effort; a read-only Mongo (Atlas with limited
             # perms) should not crash startup.
@@ -170,6 +192,113 @@ class ConversationsStore:
             },
         )
         return bool(result.modified_count)
+
+    # ── IP audit log (PII; TTL'd by ensure_indexes) ────────────────────
+
+    async def record_ip(
+        self, *, session_id: str, user_id: str, client_ip: str
+    ) -> None:
+        """Upsert one (session_id, ip) audit-log row.
+
+        Called on every stream turn. ``$setOnInsert`` captures the first
+        sighting; ``$set`` refreshes ``last_seen_at`` so the TTL window
+        slides forward on every turn. The TTL index drops the document 30
+        days after the last update — GDPR-flavoured retention without
+        needing a periodic cleanup job.
+        """
+        if not client_ip or client_ip == "unknown":
+            return
+        now = _utc_now()
+        doc_id = f"{session_id}:{client_ip}"
+        try:
+            await self.ip_records.update_one(
+                {"_id": doc_id},
+                {
+                    "$setOnInsert": {
+                        "session_id": session_id,
+                        "user_id": user_id or "",
+                        "ip": client_ip,
+                        "first_seen_at": now,
+                    },
+                    "$set": {"last_seen_at": now},
+                    "$inc": {"turn_count": 1},
+                },
+                upsert=True,
+            )
+        except PyMongoError as exc:
+            logger.warning("ip_records upsert failed: %s", exc)
+
+    async def aggregate_connections_by_ip(
+        self, *, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Roll up the IP audit log by source address.
+
+        Returns one row per distinct IP with conversation count, turn
+        count across all conversations, and first/last activity. Sorted
+        by most-recent activity first.
+        """
+        pipeline: list[dict[str, Any]] = [
+            {
+                "$group": {
+                    "_id": "$ip",
+                    "first_seen_at": {"$min": "$first_seen_at"},
+                    "last_seen_at": {"$max": "$last_seen_at"},
+                    "conversation_count": {"$addToSet": "$session_id"},
+                    "turns": {"$sum": "$turn_count"},
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "ip": "$_id",
+                    "first_seen_at": 1,
+                    "last_seen_at": 1,
+                    "conversation_count": {"$size": "$conversation_count"},
+                    "turns": 1,
+                }
+            },
+            {"$sort": {"last_seen_at": -1}},
+            {"$limit": int(limit)},
+        ]
+        cursor = await self.ip_records.aggregate(pipeline)
+        return [doc async for doc in cursor]
+
+    async def list_conversations_for_ip(
+        self, *, ip: str, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """List the conversations a given IP has participated in.
+
+        Joins the IP audit log against the meta side-car so each row
+        carries a title and lang for human inspection.
+        """
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ip": ip}},
+            {
+                "$lookup": {
+                    "from": META,
+                    "localField": "session_id",
+                    "foreignField": "_id",
+                    "as": "meta",
+                }
+            },
+            {"$addFields": {"meta": {"$arrayElemAt": ["$meta", 0]}}},
+            {
+                "$project": {
+                    "_id": 0,
+                    "session_id": 1,
+                    "first_seen_at": 1,
+                    "last_seen_at": 1,
+                    "turn_count": 1,
+                    "title": {"$ifNull": ["$meta.title", "Untitled"]},
+                    "lang": {"$ifNull": ["$meta.lang", "en"]},
+                    "deleted_at": "$meta.deleted_at",
+                }
+            },
+            {"$sort": {"last_seen_at": -1}},
+            {"$limit": int(limit)},
+        ]
+        cursor = await self.ip_records.aggregate(pipeline)
+        return [doc async for doc in cursor]
 
     async def soft_delete(self, *, session_id: str) -> bool:
         """Soft-delete the meta row AND drop the agno session document so

@@ -158,9 +158,58 @@ def check_stream_rate_limit(request: Request) -> None:
     _enforce_bucket(request, "stream")
 
 
+# ── Admin endpoints: loopback + optional separate token ────────
+
+
+def _expected_admin_token() -> Optional[str]:
+    raw = os.getenv("WIKI_TUTOR_ADMIN_TOKEN", "")
+    return raw or None
+
+
+# Loopback IPs that are allowed to reach the admin surface. Reaching the
+# box itself requires shell access via SSM, so loopback is a strong gate
+# on its own; the optional ``WIKI_TUTOR_ADMIN_TOKEN`` is belt-and-braces
+# in case the operator forwards the port locally.
+_LOOPBACK_IPS = {"127.0.0.1", "::1", "localhost"}
+
+
+async def require_admin(
+    request: Request,
+    x_admin_token: Optional[str] = Header(default=None),
+) -> None:
+    """FastAPI dependency for ``/api/admin/*`` routes.
+
+    Two checks compose:
+
+    1. The request's TCP source must be loopback. We deliberately ignore
+       ``X-Forwarded-For`` here — Caddy appends rather than replaces it,
+       so a public attacker could send ``X-Forwarded-For: 127.0.0.1`` and
+       slip past an XFF-trusting check. The actual gate against public
+       traffic is the Caddy site block, which refuses to proxy
+       ``/api/admin/*`` at all. This check is the second layer for the
+       case where uvicorn is reachable directly (SSM port-forward, local
+       dev, or a future deployment without Caddy in front).
+    2. If ``WIKI_TUTOR_ADMIN_TOKEN`` is set, the ``X-Admin-Token`` header
+       must match it via constant-time comparison. If unset, the gate is
+       loopback-only.
+    """
+    tcp_source = request.client.host if request.client else ""
+    if tcp_source not in _LOOPBACK_IPS:
+        # 404 (not 403) — don't confirm the route exists.
+        raise HTTPException(status_code=404, detail="not found")
+
+    expected = _expected_admin_token()
+    if expected is None:
+        return
+    if not x_admin_token or not _tokens_match(x_admin_token, expected):
+        raise HTTPException(status_code=401, detail="invalid admin token")
+
+
 __all__ = [
     "require_access_token",
+    "require_admin",
     "is_token_valid",
     "check_rate_limit",
     "check_stream_rate_limit",
+    "_client_ip",
 ]

@@ -55,7 +55,7 @@ from starlette.responses import Response
 from agent import WikiTutorAgent, WikiTutorAgentConfig
 from config.settings import PROJECT_SETTINGS
 from core.base_sse_adapter import BaseSSEAdapter
-from core.auth import check_stream_rate_limit, require_access_token
+from core.auth import _client_ip, check_stream_rate_limit, require_access_token
 from core.cancellation_registry import (
     cancel_query,
     register_query,
@@ -67,6 +67,7 @@ from core.turn_trace_recorder import TurnTraceRecorder
 from events import AgentEvent, EventType
 from events.models import AgentRole
 from fastapi_sse_contract import format_sse
+from streaming_admin import router as admin_router
 from streaming_auth import router as auth_router
 from streaming_conversations import router as conversations_router
 
@@ -163,6 +164,7 @@ async def stream_query(
     verbosity: int,
     reasoning_effort: Optional[str],
     cancellation_event: asyncio.Event,
+    client_ip: str = "",
 ) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events for one query."""
     adapter = WikiTutorSSEAdapter(
@@ -197,6 +199,14 @@ async def stream_query(
                     first_user_message=query,
                     lang=lang or "en",
                 )
+                # IP audit log — separate collection with its own TTL so
+                # the PII window is independent of conversation history.
+                if client_ip:
+                    await store.record_ip(
+                        session_id=session_id,
+                        user_id=user_id,
+                        client_ip=client_ip,
+                    )
             except Exception as exc:  # pragma: no cover
                 logger.warning("[wiki-sse] pre-turn ensure_meta failed: %s", exc)
 
@@ -221,6 +231,7 @@ async def stream_query(
             user_id=user_id,
             run_id=query_id,  # default; replaced below once we see the real run_id
             lang=lang or "en",
+            client_ip=client_ip,
         )
         # Track the agent's final answer text so the title polisher can
         # consider it. Built up from RESPONSE_DELTA content.
@@ -441,6 +452,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(auth_router)
 app.include_router(conversations_router)
+app.include_router(admin_router)
 
 
 @app.get("/health")
@@ -455,10 +467,13 @@ async def health() -> dict[str, Any]:
         Depends(require_access_token),
     ],
 )
-async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
+async def query_stream(
+    request: WikiTutorQueryRequest, http_request: Request
+) -> StreamingResponse:
     session_id = request.session_id or str(uuid.uuid4())
     query_id = request.query_id or str(uuid.uuid4())
     cancellation_event = await register_query(query_id)
+    client_ip = _client_ip(http_request)
 
     async def event_generator() -> AsyncGenerator[str, None]:
         try:
@@ -471,6 +486,7 @@ async def query_stream(request: WikiTutorQueryRequest) -> StreamingResponse:
                 verbosity=request.verbosity or 3,
                 reasoning_effort=request.reasoning_effort,
                 cancellation_event=cancellation_event,
+                client_ip=client_ip,
             ):
                 yield event
         finally:
